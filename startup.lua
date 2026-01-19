@@ -1,41 +1,54 @@
 local speaker = peripheral.find("speaker")
 if not speaker then error("No speaker found!") end
 
-local inst = "bit" -- Cleaner synth sound to prevent overlapping muddy tones
+local synth = "bit"      -- The "Scat" voice
+local kick = "bassdrum"  -- The 1:18 beat
 local vol = 1.0
 
--- Pitch Reference: 5=F, 8=Ab, 10=Bb, 12=C, 15=Eb, 17=F(high), 20=Ab(high)
-local melody = {
-    -- "Ski-ba-bop-ba-dop-bop"
-    {17, 0.15}, {17, 0.1}, {15, 0.1}, {17, 0.1},  -- Ski-ba-bop-ba
-    {20, 0.15}, {17, 0.15},                       -- dop-bop
+-- Melody: {Pitch, Delay, PlayKick?}
+-- F=17, Eb=15, Ab=20, Bb=22(BEE!)
+local beatDrop = {
+    -- The "I'm the Scatman" buildup
+    {10, 0.2, true}, {12, 0.2, false}, {15, 0.2, true}, {17, 0.4, false},
     
-    {0, 0.2}, -- The "breath" before the big scat
+    -- The 1:18 Rapid Scat (Ba-da-ba-da-ba-da-ba-da)
+    {17, 0.1, true}, {17, 0.1, false}, {17, 0.1, true}, {17, 0.1, false},
+    {17, 0.1, true}, {17, 0.1, false}, {17, 0.1, true}, {17, 0.1, false},
     
-    -- "Ba-da-ba-da-ba-BEE bop bop"
-    {17, 0.1}, {15, 0.1}, {17, 0.1}, {15, 0.1}, {17, 0.1}, -- Ba-da-ba-da-ba
-    {22, 0.2},                                             -- BEE (The high note!)
-    {17, 0.15}, {15, 0.15}, {12, 0.3},                     -- bop bop bope
+    -- THE CLIMAX (1:21) - "Bop-ba-da-BEE!"
+    {15, 0.1, true},  -- Ba
+    {17, 0.1, false}, -- da
+    {20, 0.1, true},  -- ba
+    {22, 0.3, false}, -- BEE! (High Bb)
+    
+    -- Resolution
+    {17, 0.1, true}, {15, 0.1, false}, {12, 0.4, true}
 }
 
-local function playScatman()
-    for _, note in ipairs(melody) do
-        local pitch = note[1]
-        local delay = note[2]
+local function playBeat()
+    print("Ski-ba-bop-ba-dop-bop!")
+    for _, n in ipairs(beatDrop) do
+        local pitch, delay, hitKick = n[1], n[2], n[3]
         
-        if pitch > 0 then
-            speaker.playNote(inst, vol, pitch)
+        -- Play the Synth
+        speaker.playNote(synth, vol, pitch)
+        
+        -- Layer the Kick Drum if marked true
+        if hitKick then
+            speaker.playNote(kick, vol, 1) -- Pitch 1 is a deep thud
         end
-        -- Using 0.1 as a minimum prevents the "rushed/overlapping" feel
+        
         sleep(delay)
     end
 end
 
-print("Scatman Doorbell v3: Focused on the 'BEE'")
+print("Scatman 1:18 'The Beat Drop' Version")
+print("Waiting for button on BACK...")
+
 while true do
     os.pullEvent("redstone")
     if rs.getInput("back") then
-        playScatman()
-        sleep(2) -- Cooldown
+        playBeat()
+        sleep(1.5) -- Cool down
     end
 end
