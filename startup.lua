@@ -1,45 +1,41 @@
 local speaker = peripheral.find("speaker")
 if not speaker then error("No speaker found!") end
 
--- 'pling' captures the 90s House Piano/Synth vibe
-local inst = "pling"
+local inst = "bit" -- Cleaner synth sound to prevent overlapping muddy tones
 local vol = 1.0
 
--- Key Pitches (F Minor scale for Note Blocks):
--- F=5, Ab=8, Bb=10, C=12, Eb=15, F_high=17
-local chorus = {
+-- Pitch Reference: 5=F, 8=Ab, 10=Bb, 12=C, 15=Eb, 17=F(high), 20=Ab(high)
+local melody = {
     -- "Ski-ba-bop-ba-dop-bop"
-    {17, 0.05}, {17, 0.05}, {15, 0.05}, {17, 0.1},  -- Ski-ba-bop-ba
-    {20, 0.05}, {17, 0.05}, {15, 0.05}, {12, 0.1},  -- dop-bop-bop-da
-    {15, 0.1},  {17, 0.2},                          -- Bop!
+    {17, 0.15}, {17, 0.1}, {15, 0.1}, {17, 0.1},  -- Ski-ba-bop-ba
+    {20, 0.15}, {17, 0.15},                       -- dop-bop
     
-    {0, 0.2}, -- Short breath
+    {0, 0.2}, -- The "breath" before the big scat
     
-    -- "Ba-da-ba-da-ba-be bop bop bodda bope"
-    {17, 0.05}, {15, 0.05}, {17, 0.05}, {15, 0.05}, {17, 0.05}, 
-    {12, 0.1}, {10, 0.1}, {12, 0.1}, {5, 0.4}
+    -- "Ba-da-ba-da-ba-BEE bop bop"
+    {17, 0.1}, {15, 0.1}, {17, 0.1}, {15, 0.1}, {17, 0.1}, -- Ba-da-ba-da-ba
+    {22, 0.2},                                             -- BEE (The high note!)
+    {17, 0.15}, {15, 0.15}, {12, 0.3},                     -- bop bop bope
 }
 
 local function playScatman()
-    for _, note in ipairs(chorus) do
+    for _, note in ipairs(melody) do
         local pitch = note[1]
         local delay = note[2]
+        
         if pitch > 0 then
             speaker.playNote(inst, vol, pitch)
         end
-        -- Minecraft ticks are 0.05s, so we use that as our base
+        -- Using 0.1 as a minimum prevents the "rushed/overlapping" feel
         sleep(delay)
     end
 end
 
-print("Scatman Doorbell v2: THE CHORUS")
-print("Waiting for signal on BACK side...")
-
+print("Scatman Doorbell v3: Focused on the 'BEE'")
 while true do
     os.pullEvent("redstone")
     if rs.getInput("back") then
-        print("Bop-ba-dop-bop!")
         playScatman()
-        sleep(1) -- Short cooldown
+        sleep(2) -- Cooldown
     end
 end
