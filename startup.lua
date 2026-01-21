@@ -1,31 +1,33 @@
--- Configuration
-local songFile = "AMERICA.dfpwm"
-local cooldownTime = 135 -- 2 minutes 15 seconds in seconds
-local side = "back" -- Redstone input side
-
--- Initialize variables
-local cooldownEnd = 0
+local dfpwm = require("cc.audio.dfpwm")
 local speaker = peripheral.find("speaker")
-local playerDetector = peripheral.find("playerDetector")
+local detector = peripheral.find("player_detector")
 
--- Function to play the dfpwm file
+-- Configuration
+local audioFile = "/disk/AMERICA.dfpwm"
+if not fs.exists(audioFile) then audioFile = "/AMERICA.dfpwm" end
+
+local cooldownSeconds = 135 -- 2 minutes and 15 seconds
+local lastStartTime = 0
+
+-- Audio Function (Matches your working PlayAudio.lua exactly)
 local function playSong()
-    if not speaker then
-        print("No speaker found!")
-        return false
-    end
-    
-    if not fs.exists(songFile) then
-        print("Song file not found: " .. songFile)
-        return false
-    end
-    
-    local file = fs.open(songFile, "rb")
-    local dfpwm = require("dfpwm")
     local decoder = dfpwm.make_decoder()
+    local file = io.open(audioFile, "rb")
     
+    if not file then 
+        print("File not found: " .. audioFile)
+        return 
+    end
+
+    lastStartTime = os.epoch("utc") / 1000 -- Record the start time NOW
+    
+    term.clear()
+    term.setCursorPos(1,1)
+    print("OIL WELL AUDIO: PLAYING")
+
+    -- Your working chunk logic
     while true do
-        local chunk = file.read(16 * 1024)
+        local chunk = file:read(8 * 1024)
         if not chunk then break end
         
         local buffer = decoder(chunk)
@@ -35,61 +37,47 @@ local function playSong()
         end
     end
     
-    file.close()
-    return true
+    file:close()
+    
+    -- Calculate remaining cooldown
+    local now = os.epoch("utc") / 1000
+    local elapsed = now - lastStartTime
+    local remaining = cooldownSeconds - elapsed
+    
+    if remaining > 0 then
+        print("Waiting for cooldown: " .. math.floor(remaining) .. "s")
+        sleep(remaining)
+    end
 end
 
--- Main program loop
+-- Main Loop
+term.clear()
+term.setCursorPos(1,1)
+print("OIL WELL SYSTEM ONLINE")
+
 while true do
-    local currentTime = os.time()
-    
-    -- Check if redstone signal is received and cooldown is over
-    if rs.getInput(side) and currentTime >= cooldownEnd then
-        -- Detect players
-        local players = {}
-        if playerDetector then
-            players = playerDetector.getPlayersInRange()
-        end
-        
-        -- Clear screen and print player info
-        term.clear()
-        term.setCursorPos(1, 1)
-        
-        if #players > 0 then
-            print("Player detected: " .. table.concat(players, ", "))
-        else
-            print("Redstone signal detected!")
-        end
-        
-        print("Now playing: " .. songFile)
-        
-        -- Set cooldown end time
-        cooldownEnd = currentTime + cooldownTime
-        
-        -- Play the song in the background
-        parallel.waitForAll(
-            function()
-                playSong()
-            end,
-            function()
-                -- Show cooldown progress
-                while currentTime < cooldownEnd do
-                    local remaining = cooldownEnd - currentTime
-                    local minutes = math.floor(remaining / 60)
-                    local seconds = remaining % 60
-                    term.setCursorPos(1, 4)
-                    term.clearLine()
-                    print(string.format("Cooldown: %d:%02d", minutes, seconds))
-                    sleep(1)
-                    currentTime = os.time()
-                end
-                
-                term.setCursorPos(1, 4)
-                term.clearLine()
-                print("Ready for next play")
-            end
-        )
+    local triggered = false
+
+    -- Trigger 1: Redstone
+    if rs.getInput("back") then
+        triggered = true
     end
-    
-    sleep(0.5) -- Check redstone state every 0.5 seconds
+
+    -- Trigger 2: Player Detector (Optional)
+    if not triggered and detector then
+        local players = detector.getPlayersInRange(10)
+        if #players > 0 then
+            triggered = true
+        end
+    end
+
+    if triggered then
+        -- Only play if the cooldown has passed
+        local now = os.epoch("utc") / 1000
+        if (now - lastStartTime) >= cooldownSeconds then
+            playSong()
+        end
+    end
+
+    sleep(0.5) -- Short wait to prevent lag
 end
