@@ -3,7 +3,7 @@ local speaker = peripheral.find("speaker")
 
 local audioFile = "/AMERICA.dfpwm"
 
-local function playScatman()
+local function playMusic()
     local decoder = dfpwm.make_decoder()
     -- Open file with 'rb' (read binary)
     local file = io.open(audioFile, "rb")
@@ -28,6 +28,14 @@ end
 while true do
     os.pullEvent("redstone")
     if rs.getInput("back") then
-        playScatman()
+        playMusic()
+        term.clear()
+        term.setCursorPos(1,1)
+        term.setTextColor(colors.red)
+        write("AMER")
+        term.setTextColor(colors.white)
+        write("IC")
+        term.setTextColor(colors.blue)
+        print("A")
     end
 end
