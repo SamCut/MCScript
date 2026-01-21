@@ -1,94 +1,58 @@
-local dfpwm = require("cc.audio.dfpwm")
+-- Peripherals Setup
 local speaker = peripheral.find("speaker")
-local audioFile = "/doornoise.dfpwm"
-local detector = peripheral.find("player_detector")
-local doorSide = "back" 
-local range = 8
+local detector = peripheral.find("playerDetector")
+local dfpwm = require("dfpwm")
 
--- Table to keep track of who is currently in range
-local activePlayers = {}
+-- Configuration
+local fileName = "AMERICA.dfpwm"
+local detectionRange = 10 -- Blocks
+local cooldownSeconds = 135 -- 2 minutes and 15 seconds
 
-term.clear()
-term.setCursorPos(1,1)
-print("=== SACRIFICIAL SECURITY SYSTEM V1.1 ===")
+if not speaker then error("No speaker found!") end
+if not detector then error("No player detector found!") end
+if not fs.exists(fileName) then error("File " .. fileName .. " not found!") end
 
-if not detector then
-    print("STATUS: ERROR - Detector not found!")
-    return
-end
+local decoder = dfpwm.make_decoder()
 
-print("STATUS: INITIALIZING...")
-print("RANGE: " .. range .. " blocks")
-sleep(1)
-
-local function playDoorNoise()
-    local decoder = dfpwm.make_decoder()
-    -- Open file with 'rb' (read binary)
-    local file = io.open(audioFile, "rb")
+local function playSong()
+    local file = io.open(fileName, "rb")
+    term.clear()
+    term.setCursorPos(1,1)
     
-    if not file then return print("File not found") end
+    -- Get player names in range
+    local players = detector.getPlayersInRange(detectionRange)
+    local playerName = players[1] or "Someone"
 
-    -- Using a smaller 8kb chunk instead of 16kb can stop screeching
-    while true do
-        local chunk = file:read(8 * 1024) 
-        if not chunk then break end
-        
+    print("--- Security System ---")
+    print("Detected: " .. playerName)
+    print("Status: Playing " .. fileName)
+    print("Cooldown active: " .. cooldownSeconds .. "s")
+
+    -- Audio playback loop
+    for chunk in file:lines(16 * 1024) do
         local buffer = decoder(chunk)
-        
-        -- This ensures the speaker is actually ready before pushing more data
         while not speaker.playAudio(buffer) do
             os.pullEvent("speaker_audio_empty")
         end
     end
+    
     file:close()
 end
 
--- Helper function to check if a name is in a list
-local function isNameInList(name, list)
-    for _, value in ipairs(list) do
-        if value == name then return true end
-    end
-    return false
-end
+-- Main Loop
+print("System Online. Waiting for players...")
 
 while true do
-    -- Get the current list of players within range
-    local detectedNow = detector.getPlayersInRange(range)
-    local timestamp = "[" .. textutils.formatTime(os.time(), true) .. "] "
-
-    -- 1. Check for NEW players (Entered)
-    for _, name in ipairs(detectedNow) do
-        if not isNameInList(name, activePlayers) then
-            print(timestamp .. "ENTERED: " .. name)
-            table.insert(activePlayers, name)
-        end
+    -- Check for players
+    if detector.isPlayerInRange(detectionRange) then
+        playSong()
+        -- Lock the script until cooldown is over
+        sleep(cooldownSeconds)
+        term.clear()
+        term.setCursorPos(1,1)
+        print("Cooldown finished. Waiting for players...")
     end
-
-    -- 2. Check for players who LEFT
-    for i = #activePlayers, 1, -1 do
-        local name = activePlayers[i]
-        if not isNameInList(name, detectedNow) then
-            print(timestamp .. "LEFT:    " .. name)
-            table.remove(activePlayers, i)
-        end
-    end
-
-    -- 3. Door Control Logic
-    if #activePlayers > 0 then
-        -- Someone is here! Keep the door open.
-        if redstone.getOutput(doorSide) == false then
-            redstone.setOutput(doorSide, true)
-            playDoorNoise()
-            print("STATUS: SECURE ACCESS GRANTED")
-        end
-    else
-        -- Area is empty. Close the door.
-        if redstone.getOutput(doorSide) == true then
-            redstone.setOutput(doorSide, false)
-            playDoorNoise()
-            print("STATUS: AREA CLEAR - LOCKING DOWN")
-        end
-    end
-
-    sleep(0.5) -- Fast enough to catch sprinters, slow enough to prevent lag
+    
+    -- Check every second to save CPU
+    sleep(1)
 end
