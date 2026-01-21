@@ -1,82 +1,95 @@
--- 1. Correct Library Path (Matches your working Scatman script)
 local dfpwm = require("cc.audio.dfpwm")
-
--- 2. Correct Peripheral Names (Matched to your specific 'Found these' list)
 local speaker = peripheral.find("speaker")
-local detector = peripheral.find("player_detector") -- FIXED: Added underscore
+-- This will now be 'nil' instead of crashing if the block is missing
+local detector = peripheral.find("player_detector") 
 
 -- Configuration
 local audioFile = "/disk/AMERICA.dfpwm"
-local detectionRange = 10
-local cooldownSeconds = 135 -- 2 minutes, 15 seconds
+if not fs.exists(audioFile) then audioFile = "/AMERICA.dfpwm" end
 
--- Safety check
-if not speaker or not detector then
-    error("Peripheral Error! Make sure the Speaker and Player Detector are attached.")
-end
+local detectionRange = 10
+local cooldownSeconds = 135 -- 2 minutes and 15 seconds
+local lastStartTime = 0
+
+if not speaker then error("No speaker found! System cannot play audio.") end
 
 local function playSong(triggerSource)
     local decoder = dfpwm.make_decoder()
     local file = io.open(audioFile, "rb")
-    
-    if not file then 
-        print("Error: Could not find " .. audioFile)
-        return 
-    end
+    if not file then return print("Error: File not found!") end
 
+    lastStartTime = os.epoch("utc") / 1000 -- Mark start time
+    
     term.clear()
     term.setCursorPos(1,1)
-    print("--- PATRIOTIC DEFENSE SYSTEM ---")
-    print("Detected: " .. triggerSource)
-    print("Playing: AMERICA.dfpwm")
-    print("Cooldown active: 2:15")
+    print("--- OIL WELL AUDIO SYSTEM ---")
+    print("Trigger: " .. triggerSource)
+    print("Status: PLAYING (Turn OFF redstone to Kill)")
 
-    -- Your working 8kb chunk logic
+    -- Audio chunk loop (8kb chunks)
     while true do
-        local chunk = file:read(8 * 1024) 
+        -- KILL SWITCH: If redstone at the back goes OFF, stop immediately
+        if not rs.getInput("back") then
+            print("Redstone Cut: Stopping Audio.")
+            break
+        end
+
+        local chunk = file:read(8 * 1024) --
         if not chunk then break end
         
         local buffer = decoder(chunk)
+        
+        -- Wait for speaker to be ready
         while not speaker.playAudio(buffer) do
-            os.pullEvent("speaker_audio_empty")
+            os.pullEvent("speaker_audio_empty") --
         end
     end
     
     file:close()
     
-    -- Wait for the 2:15 cooldown to ensure no overlap
-    sleep(cooldownSeconds)
+    -- Overlap Prevention: Calculate remaining time in the 2:15 window
+    local currentTime = os.epoch("utc") / 1000
+    local elapsed = currentTime - lastStartTime
+    local remaining = cooldownSeconds - elapsed
     
-    term.clear()
-    term.setCursorPos(1,1)
-    print("System Ready. Waiting for players or redstone...")
+    if remaining > 0 then
+        print("Cooldown: " .. math.floor(remaining) .. "s remaining...")
+        sleep(remaining)
+    end
 end
 
--- Main Loop
+-- Main Monitoring Loop
 term.clear()
 term.setCursorPos(1,1)
-print("System Online. Monitoring triggers...")
+print("OIL WELL SYSTEM ONLINE")
+if detector then print("Detector: ACTIVE") else print("Detector: NOT FOUND (Redstone Only)") end
 
 while true do
-    local triggerFound = false
-    local sourceName = ""
+    local shouldPlay = false
+    local reason = ""
 
-    -- 1. Check Player Detector
-    -- Using 'getPlayersInRange' which returns a list of players
-    local players = detector.getPlayersInRange(detectionRange)
-    if #players > 0 then
-        sourceName = players[1] -- Use the first player's name
-        triggerFound = true
-    
-    -- 2. Check Redstone at the back
-    elseif rs.getInput("back") then
-        sourceName = "Redstone Signal"
-        triggerFound = true
+    -- 1. Check Redstone (Back)
+    if rs.getInput("back") then
+        reason = "Redstone Input"
+        shouldPlay = true
     end
 
-    if triggerFound then
-        playSong(sourceName)
+    -- 2. Check Player Detector (Only if it exists)
+    if not shouldPlay and detector then
+        local players = detector.getPlayersInRange(detectionRange)
+        if #players > 0 then
+            reason = "Player Detected"
+            shouldPlay = true
+        end
     end
 
-    sleep(0.5) -- Safety sleep
+    -- 3. Check Cooldown before starting
+    if shouldPlay then
+        local now = os.epoch("utc") / 1000
+        if (now - lastStartTime) >= cooldownSeconds then
+            playSong(reason)
+        end
+    end
+
+    sleep(1) -- Check once per second to stay efficient
 end
