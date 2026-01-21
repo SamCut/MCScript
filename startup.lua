@@ -29,32 +29,9 @@ local function playAmerica()
     file:close()
 end
 
--- Main Loop matching your Scatman structure
 while true do
-    term.clear()
-    term.setCursorPos(1,1)
-    print("OIL WELL SYSTEM ONLINE")
-    print("Waiting for trigger...")
-
-    -- Wait for a signal change
     os.pullEvent("redstone")
-    
-    local triggered = false
-
-    -- Check Redstone first (matching your working script)
     if rs.getInput("back") then
-        triggered = true
-        print("REDSTONE TRIGGER DETECTED")
-    -- Check Detector as a backup
-    elseif detector then
-        local players = detector.getPlayersInRange(10)
-        if #players > 0 then
-            triggered = true
-        end
-    end
-
-    if triggered then
         playAmerica()
-        print("PLAYING AUDIO")
     end
 end
