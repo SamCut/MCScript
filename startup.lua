@@ -1,95 +1,95 @@
-local dfpwm = require("cc.audio.dfpwm")
-local speaker = peripheral.find("speaker")
--- This will now be 'nil' instead of crashing if the block is missing
-local detector = peripheral.find("player_detector") 
-
 -- Configuration
-local audioFile = "/disk/AMERICA.dfpwm"
-if not fs.exists(audioFile) then audioFile = "/AMERICA.dfpwm" end
+local songFile = "AMERICA.dfpwm"
+local cooldownTime = 135 -- 2 minutes 15 seconds in seconds
+local side = "back" -- Redstone input side
 
-local detectionRange = 10
-local cooldownSeconds = 135 -- 2 minutes and 15 seconds
-local lastStartTime = 0
+-- Initialize variables
+local cooldownEnd = 0
+local speaker = peripheral.find("speaker")
+local playerDetector = peripheral.find("playerDetector")
 
-if not speaker then error("No speaker found! System cannot play audio.") end
-
-local function playSong(triggerSource)
-    local decoder = dfpwm.make_decoder()
-    local file = io.open(audioFile, "rb")
-    if not file then return print("Error: File not found!") end
-
-    lastStartTime = os.epoch("utc") / 1000 -- Mark start time
+-- Function to play the dfpwm file
+local function playSong()
+    if not speaker then
+        print("No speaker found!")
+        return false
+    end
     
-    term.clear()
-    term.setCursorPos(1,1)
-    print("--- OIL WELL AUDIO SYSTEM ---")
-    print("Trigger: " .. triggerSource)
-    print("Status: PLAYING (Turn OFF redstone to Kill)")
-
-    -- Audio chunk loop (8kb chunks)
+    if not fs.exists(songFile) then
+        print("Song file not found: " .. songFile)
+        return false
+    end
+    
+    local file = fs.open(songFile, "rb")
+    local dfpwm = require("dfpwm")
+    local decoder = dfpwm.make_decoder()
+    
     while true do
-        -- KILL SWITCH: If redstone at the back goes OFF, stop immediately
-        if not rs.getInput("back") then
-            print("Redstone Cut: Stopping Audio.")
-            break
-        end
-
-        local chunk = file:read(8 * 1024) --
+        local chunk = file.read(16 * 1024)
         if not chunk then break end
         
         local buffer = decoder(chunk)
         
-        -- Wait for speaker to be ready
         while not speaker.playAudio(buffer) do
-            os.pullEvent("speaker_audio_empty") --
+            os.pullEvent("speaker_audio_empty")
         end
     end
     
-    file:close()
-    
-    -- Overlap Prevention: Calculate remaining time in the 2:15 window
-    local currentTime = os.epoch("utc") / 1000
-    local elapsed = currentTime - lastStartTime
-    local remaining = cooldownSeconds - elapsed
-    
-    if remaining > 0 then
-        print("Cooldown: " .. math.floor(remaining) .. "s remaining...")
-        sleep(remaining)
-    end
+    file.close()
+    return true
 end
 
--- Main Monitoring Loop
-term.clear()
-term.setCursorPos(1,1)
-print("OIL WELL SYSTEM ONLINE")
-if detector then print("Detector: ACTIVE") else print("Detector: NOT FOUND (Redstone Only)") end
-
+-- Main program loop
 while true do
-    local shouldPlay = false
-    local reason = ""
-
-    -- 1. Check Redstone (Back)
-    if rs.getInput("back") then
-        reason = "Redstone Input"
-        shouldPlay = true
-    end
-
-    -- 2. Check Player Detector (Only if it exists)
-    if not shouldPlay and detector then
-        local players = detector.getPlayersInRange(detectionRange)
+    local currentTime = os.time()
+    
+    -- Check if redstone signal is received and cooldown is over
+    if rs.getInput(side) and currentTime >= cooldownEnd then
+        -- Detect players
+        local players = {}
+        if playerDetector then
+            players = playerDetector.getPlayersInRange()
+        end
+        
+        -- Clear screen and print player info
+        term.clear()
+        term.setCursorPos(1, 1)
+        
         if #players > 0 then
-            reason = "Player Detected"
-            shouldPlay = true
+            print("Player detected: " .. table.concat(players, ", "))
+        else
+            print("Redstone signal detected!")
         end
+        
+        print("Now playing: " .. songFile)
+        
+        -- Set cooldown end time
+        cooldownEnd = currentTime + cooldownTime
+        
+        -- Play the song in the background
+        parallel.waitForAll(
+            function()
+                playSong()
+            end,
+            function()
+                -- Show cooldown progress
+                while currentTime < cooldownEnd do
+                    local remaining = cooldownEnd - currentTime
+                    local minutes = math.floor(remaining / 60)
+                    local seconds = remaining % 60
+                    term.setCursorPos(1, 4)
+                    term.clearLine()
+                    print(string.format("Cooldown: %d:%02d", minutes, seconds))
+                    sleep(1)
+                    currentTime = os.time()
+                end
+                
+                term.setCursorPos(1, 4)
+                term.clearLine()
+                print("Ready for next play")
+            end
+        )
     end
-
-    -- 3. Check Cooldown before starting
-    if shouldPlay then
-        local now = os.epoch("utc") / 1000
-        if (now - lastStartTime) >= cooldownSeconds then
-            playSong(reason)
-        end
-    end
-
-    sleep(1) -- Check once per second to stay efficient
+    
+    sleep(0.5) -- Check redstone state every 0.5 seconds
 end
