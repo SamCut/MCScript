@@ -1,30 +1,32 @@
+-- 1. Corrected library path for CraftOS 1.9
 local dfpwm = require("cc.audio.dfpwm")
+
+-- 2. Find peripherals automatically
 local speaker = peripheral.find("speaker")
 local detector = peripheral.find("playerDetector")
 
 -- Configuration
-local audioFile = "/AMERICA.dfpwm"
+local audioFile = "/disk/AMERICA.dfpwm" -- Path for file on the disk
 local detectionRange = 10
 local cooldownSeconds = 135 -- 2 minutes and 15 seconds
 
--- Safety checks
-if not speaker then error("No speaker found!") end
-if not detector then error("No player detector found!") end
-if not fs.exists(audioFile) then error("File " .. audioFile .. " not found!") end
+-- Safety checks with helpful messages
+if not speaker then error("No Speaker found! Check the top of the PC.") end
+if not detector then error("No Player Detector found! Check the right side.") end
+if not fs.exists(audioFile) then error("AMERICA.dfpwm not found on disk!") end
 
-local function playAmerica(triggerSource)
+local function playSong(triggerSource)
     local decoder = dfpwm.make_decoder()
     local file = io.open(audioFile, "rb")
     
-    -- Clear and print status
     term.clear()
     term.setCursorPos(1,1)
     print("--- Security System ---")
-    print("Trigger: " .. triggerSource)
-    print("Status: Playing AMERICA.dfpwm")
-    print("Cooldown: 2:15 active")
+    print("Triggered by: " .. triggerSource)
+    print("Playing: AMERICA.dfpwm")
+    print("Cooldown: 2:15 active...")
 
-    -- Audio playback loop (8kb chunks for stability)
+    -- Use your 8kb chunk logic for stability
     while true do
         local chunk = file:read(8 * 1024) 
         if not chunk then break end
@@ -37,45 +39,40 @@ local function playAmerica(triggerSource)
     
     file:close()
     
-    -- Wait for the remainder of the cooldown after the song finishes
-    -- Note: The song itself takes time to play, so we sleep for the 
-    -- cooldown period to ensure no overlap.
+    -- Wait the remainder of the cooldown
     sleep(cooldownSeconds)
     
     term.clear()
     term.setCursorPos(1,1)
-    print("System Online. Waiting for triggers...")
+    print("System Online. Waiting for players or redstone...")
 end
 
--- Main Monitoring Loop
+-- Main Loop
 term.clear()
 term.setCursorPos(1,1)
-print("System Online. Waiting for triggers...")
+print("System Online. Monitoring triggers...")
 
 while true do
-    local triggered = false
-    local name = ""
+    local triggerFound = false
+    local sourceName = ""
 
-    -- 1. Check Player Detector
+    -- Check Player Detector
     if detector.isPlayerInRange(detectionRange) then
         local players = detector.getPlayersInRange(detectionRange)
         if #players > 0 then
-            -- Get the name of the first player found
-            name = players[1].name or players[1]
-            triggered = true
+            sourceName = players[1].name or players[1]
+            triggerFound = true
         end
     
-    -- 2. Check Redstone at the back
+    -- Check Redstone at the back
     elseif rs.getInput("back") then
-        name = "Redstone Signal (Back)"
-        triggered = true
+        sourceName = "Redstone (Back)"
+        triggerFound = true
     end
 
-    -- If either triggered, play the song
-    if triggered then
-        playAmerica(name)
+    if triggerFound then
+        playSong(sourceName)
     end
 
-    -- Small sleep to prevent computer from crashing (yield error)
-    sleep(0.5)
+    sleep(0.5) -- Prevents "Too long without yielding" error
 end
