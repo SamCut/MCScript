@@ -1,23 +1,18 @@
--- 1. Correct Library Path
+-- 1. Correct Library Path (Matches your working Scatman script)
 local dfpwm = require("cc.audio.dfpwm")
 
--- 2. Find Peripherals
+-- 2. Correct Peripheral Names (Matched to your specific 'Found these' list)
 local speaker = peripheral.find("speaker")
-local detector = peripheral.find("playerDetector")
+local detector = peripheral.find("player_detector") -- FIXED: Added underscore
 
 -- Configuration
 local audioFile = "/disk/AMERICA.dfpwm"
 local detectionRange = 10
 local cooldownSeconds = 135 -- 2 minutes, 15 seconds
 
--- Helper: List all connected peripherals if one is missing
+-- Safety check
 if not speaker or not detector then
-    print("Error: Missing Peripherals!")
-    print("Found these instead:")
-    for _, name in ipairs(peripheral.getNames()) do
-        print("- " .. name .. " (" .. peripheral.getType(name) .. ")")
-    end
-    error("Check the list above and update peripheral names.")
+    error("Peripheral Error! Make sure the Speaker and Player Detector are attached.")
 end
 
 local function playSong(triggerSource)
@@ -36,7 +31,7 @@ local function playSong(triggerSource)
     print("Playing: AMERICA.dfpwm")
     print("Cooldown active: 2:15")
 
-    -- 8kb chunks for stability (your working logic)
+    -- Your working 8kb chunk logic
     while true do
         local chunk = file:read(8 * 1024) 
         if not chunk then break end
@@ -49,7 +44,7 @@ local function playSong(triggerSource)
     
     file:close()
     
-    -- Wait for the song to finish and the cooldown to pass
+    -- Wait for the 2:15 cooldown to ensure no overlap
     sleep(cooldownSeconds)
     
     term.clear()
@@ -66,18 +61,16 @@ while true do
     local triggerFound = false
     local sourceName = ""
 
-    -- Check Player Detector
-    if detector.isPlayerInRange(detectionRange) then
-        local players = detector.getPlayersInRange(detectionRange)
-        if #players > 0 then
-            -- Handle different mod versions (names vs objects)
-            sourceName = type(players[1]) == "table" and players[1].name or players[1]
-            triggerFound = true
-        end
+    -- 1. Check Player Detector
+    -- Using 'getPlayersInRange' which returns a list of players
+    local players = detector.getPlayersInRange(detectionRange)
+    if #players > 0 then
+        sourceName = players[1] -- Use the first player's name
+        triggerFound = true
     
-    -- Check Redstone at the back
+    -- 2. Check Redstone at the back
     elseif rs.getInput("back") then
-        sourceName = "Redstone Signal (Back)"
+        sourceName = "Redstone Signal"
         triggerFound = true
     end
 
@@ -85,5 +78,5 @@ while true do
         playSong(sourceName)
     end
 
-    sleep(0.5) -- Prevents "Too long without yielding" error
+    sleep(0.5) -- Safety sleep
 end
