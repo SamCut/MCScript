@@ -44,6 +44,7 @@ while true do
     -- Check Redstone first (matching your working script)
     if rs.getInput("back") then
         triggered = true
+        print("REDSTONE TRIGGER DETECTED")
     -- Check Detector as a backup
     elseif detector then
         local players = detector.getPlayersInRange(10)
@@ -54,5 +55,6 @@ while true do
 
     if triggered then
         playAmerica()
+        print("PLAYING AUDIO")
     end
 end
