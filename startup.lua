@@ -18,7 +18,7 @@ local function playScatman()
         local buffer = decoder(chunk)
         
         -- This ensures the speaker is actually ready before pushing more data
-        while not speaker.playAudio(buffer) do
+        while not speaker.playAudio(buffer, 3.0) do
             os.pullEvent("speaker_audio_empty")
         end
     end
