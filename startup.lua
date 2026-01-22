@@ -27,15 +27,23 @@ end
 
 while true do
     os.pullEvent("redstone")
+    term.clear()
+    term.setCursorPos(1,1)
+    term.setTextColor(colors.red)
+    write("PATRIOT")
+    term.setTextColor(colors.white)
+    write("AUDIO")
+    term.setTextColor(colors.blue)
+    print("ONLINE")
     if rs.getInput("back") then
-        playMusic()
         term.clear()
-        term.setCursorPos(1,1)
+        term.setCursorPos(2,1)
         term.setTextColor(colors.red)
         write("AMER")
         term.setTextColor(colors.white)
         write("IC")
         term.setTextColor(colors.blue)
         print("A")
+        playMusic()
     end
 end
