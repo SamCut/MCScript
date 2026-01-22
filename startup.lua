@@ -26,7 +26,6 @@ local function playMusic()
 end
 
 while true do
-    os.pullEvent("redstone")
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.red)
@@ -35,15 +34,16 @@ while true do
     write("AUDIO")
     term.setTextColor(colors.blue)
     print("ONLINE")
+    os.pullEvent("redstone")
     if rs.getInput("back") then
         term.clear()
-        term.setCursorPos(2,1)
+        term.setCursorPos(1,2)
         term.setTextColor(colors.red)
-        write("AMER")
+        write("AME")
         term.setTextColor(colors.white)
-        write("IC")
+        write("RI")
         term.setTextColor(colors.blue)
-        print("A")
+        print("CA")
         playMusic()
     end
 end
