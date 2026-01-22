@@ -36,7 +36,6 @@ while true do
     print("ONLINE")
     os.pullEvent("redstone")
     if rs.getInput("back") then
-        term.clear()
         term.setCursorPos(1,2)
         term.setTextColor(colors.red)
         write("AME")
