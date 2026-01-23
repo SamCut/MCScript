@@ -1,40 +1,67 @@
 local tank = peripheral.find("fluid_storage")
-local MAX_CAPACITY = 16000 -- Hardcoded based on your info
+local mon = peripheral.find("monitor")
+local MAX_CAPACITY = 16000
 
-if not tank then
-    print("No tank found!")
+if not mon then
+    print("Error: Monitor not found!")
     return
 end
 
-local lastAmount = -1
+mon.setTextScale(1) -- Smaller text allows for a bigger graphical bar
 
-print("Monitoring Tank... (Press Ctrl+T to stop)")
+local function drawProgressBar(x, y, width, percent)
+    local filledWidth = math.floor((percent / 100) * width)
+    
+    -- Draw the background/empty part of the bar (Gray)
+    mon.setCursorPos(x, y)
+    mon.setBackgroundColor(colors.gray)
+    mon.write(string.rep(" ", width))
+    
+    -- Draw the filled part (Red)
+    if filledWidth > 0 then
+        mon.setCursorPos(x, y)
+        mon.setBackgroundColor(colors.red)
+        mon.write(string.rep(" ", filledWidth))
+    end
+    
+    -- Reset to black for text
+    mon.setBackgroundColor(colors.black)
+end
+
+local lastAmount = -1
 
 while true do
     local info = tank.tanks()[1]
     local currentAmount = info and info.amount or 0
     local fluidName = info and info.name or "Empty"
+    local percent = (currentAmount / MAX_CAPACITY) * 100
 
-    -- Only update the screen if the fluid level has changed
     if currentAmount ~= lastAmount then
-        term.clear()
-        term.setCursorPos(1,1)
+        mon.clear()
         
-        print("=== Tank Monitor ===")
-        print("Fluid:    " .. fluidName)
-        print("Amount:   " .. currentAmount .. " mB")
+        -- Header
+        mon.setCursorPos(1, 2)
+        mon.setTextColor(colors.yellow)
+        mon.write("--- BLOOD STORAGE SYSTEM ---")
         
-        local percent = (currentAmount / MAX_CAPACITY) * 100
-        print(string.format("Fill:     %.1f%%", percent))
+        -- Text Info
+        mon.setTextColor(colors.white)
+        mon.setCursorPos(2, 4)
+        mon.write("Fluid:  " .. fluidName)
+        mon.setCursorPos(2, 5)
+        mon.write("Amount: " .. currentAmount .. " / " .. MAX_CAPACITY .. " mB")
         
-        -- Visual progress bar
-        local barWidth = 20
-        local filledWidth = math.floor((currentAmount / MAX_CAPACITY) * barWidth)
-        local bar = "[" .. string.rep("#", filledWidth) .. string.rep("-", barWidth - filledWidth) .. "]"
-        print("\nStatus: " .. bar)
-
+        -- The Graphical Bar
+        -- Parameters: x, y, width, percentage
+        drawProgressBar(2, 7, 25, percent)
+        
+        -- Percentage Label
+        mon.setCursorPos(2, 8)
+        mon.setTextColor(percent < 15 and colors.red or colors.green)
+        mon.write(string.format("%.1f%% Full", percent))
+        
         lastAmount = currentAmount
     end
 
-    sleep(1) -- Check every second
+    sleep(1)
 end
