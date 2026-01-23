@@ -46,7 +46,7 @@ while true do
     mon.setTextScale(1)
     mon.setCursorPos(1, 1)
     mon.setTextColor(colors.yellow)
-    mon.write("--- MULTI-TANK SYSTEM ---")
+    mon.write("--- BLOOD MONITORING SYSTEM ---")
     mon.setTextColor(colors.white)
 
     if #tanks > 0 then
@@ -55,13 +55,11 @@ while true do
         mon.setCursorPos(2, 3)
         mon.write("Tanks Detected: " .. #tanks)
         mon.setCursorPos(2, 4)
-        mon.write("Total Fluid:    " .. fluidName)
-        mon.setCursorPos(2, 5)
         mon.write("Total Amount:   " .. totalAmount .. " mB")
-        mon.setCursorPos(2, 6)
+        mon.setCursorPos(2, 5)
         mon.write("Total Max:      " .. totalMax .. " mB")
         
-        mon.setCursorPos(2, 7)
+        mon.setCursorPos(2, 6)
         mon.write(string.format("Fill:           %.1f%%", percent))
         
         drawBar(percent)
