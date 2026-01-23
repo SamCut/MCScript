@@ -1,18 +1,25 @@
--- Wrap the tank peripheral
-local tank = peripheral.find("evilcraft:dark_tank")
+-- Find any peripheral that can store fluid
+local tank = peripheral.find("fluid_storage")
 
-if tank then
-    local info = tank.tanks()[1] -- Dark Tanks usually have 1 internal tank
-    if info then
-        print("Fluid: " .. info.name)
-        print("Amount: " .. info.amount .. " mB")
+if not tank then
+    print("No tank found! Check your connections.")
+    return
+end
+
+local info = tank.tanks()[1]
+
+if info then
+    print("Fluid: " .. (info.name or "Unknown"))
+    print("Amount: " .. (info.amount or 0) .. " mB")
+    
+    -- Check if capacity exists before trying to print it
+    if info.capacity then
         print("Capacity: " .. info.capacity .. " mB")
-        
-        local percentage = (info.amount / info.capacity) * 100
-        print(string.format("Fill Level: %.2f%%", percentage))
+        local percent = (info.amount / info.capacity) * 100
+        print(string.format("Fill: %.1f%%", percent))
     else
-        print("Tank is empty.")
+        print("Capacity: Data not provided by tank")
     end
 else
-    print("Dark Tank not found! Check your connections.")
+    print("Tank is empty.")
 end
