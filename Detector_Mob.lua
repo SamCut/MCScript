@@ -1,46 +1,45 @@
-local detector = peripheral.find("environment_detector")
+-- Find all detectors and put them in a table
+local detectors = { peripheral.find("environment_detector") }
 
--- Comprehensive list of villager professions in ATM 10
-local villagerProfessions = {
-    ["Unemployed"] = true, ["Nitwit"] = true, ["Armorer"] = true,
-    ["Butcher"] = true, ["Cartographer"] = true, ["Cleric"] = true,
-    ["Farmer"] = true, ["Fisherman"] = true, ["Fletcher"] = true,
-    ["Leatherworker"] = true, ["Librarian"] = true, ["Mason"] = true,
-    ["Shepherd"] = true, ["Toolsmith"] = true, ["Weaponsmith"] = true
-}
+if #detectors == 0 then
+    print("Error: No detectors found! Check your modems.")
+    return
+end
 
-local RANGE = 8
+print("Monitoring " .. #detectors .. " pods...")
 
 while true do
     term.clear()
     term.setCursorPos(1,1)
-    
-    local entities = detector.scanEntities(RANGE)
-    local found = false
-    local currentJob = "None"
+    print("--- GLOBAL POD STATUS ---")
+    print("-------------------------")
 
-    for _, entity in pairs(entities) do
-        -- Check if the entity's name matches any profession in our list
-        if villagerProfessions[entity.name] then
-            found = true
-            currentJob = entity.name
-            break
+    for i, d in ipairs(detectors) do
+        -- Get the network name (e.g., environment_detector_0)
+        local name = peripheral.getName(d)
+        local entities = d.scanEntities(4) -- Small range since it's 1-per-pod
+        
+        local alive = false
+        for _, e in pairs(entities) do
+            if e.name == "Unemployed" then
+                alive = true
+                break
+            end
+        end
+
+        -- Print status for this specific pod
+        term.setCursorPos(1, i + 2)
+        if alive then
+            term.setTextColor(colors.green)
+            print(name .. ": [ OK ]")
+        else
+            term.setTextColor(colors.red)
+            print(name .. ": [ MISSING ]")
+            -- Optional: You can trigger redstone on a per-pod basis 
+            -- if the computer is touching the pod's redstone input.
         end
     end
 
-    if found then
-        term.setTextColor(colors.green)
-        print("STATUS: VILLAGER ALIVE")
-        term.setTextColor(colors.white)
-        print("Profession: " .. currentJob)
-        redstone.setOutput("back", false) -- Turn off alarm
-    else
-        term.setTextColor(colors.red)
-        print("ALERT: VILLAGER GONE!")
-        term.setTextColor(colors.white)
-        print("No living villager within " .. RANGE .. " blocks.")
-        redstone.setOutput("back", true) -- Trigger alarm/spawner
-    end
-
-    sleep(2) -- Check every 2 seconds to reduce lag
+    term.setTextColor(colors.white)
+    sleep(2)
 end
