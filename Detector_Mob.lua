@@ -1,42 +1,48 @@
--- Find all detectors and put them in a table
+-- Find all detectors on the network
 local detectors = { peripheral.find("environment_detector") }
 
 if #detectors == 0 then
-    print("Error: No detectors found! Check your modems.")
+    print("Error: No detectors found!")
     return
 end
 
-print("Monitoring " .. #detectors .. " pods...")
+-- Sort detectors by name so the order doesn't jump around on the screen
+table.sort(detectors, function(a, b) 
+    return peripheral.getName(a) < peripheral.getName(b) 
+end)
 
 while true do
     term.clear()
     term.setCursorPos(1,1)
-    print("--- GLOBAL POD STATUS ---")
-    print("-------------------------")
+    term.setTextColor(colors.yellow)
+    print("--- BLOOD POD VITALS ---")
+    print("------------------------")
 
     for i, d in ipairs(detectors) do
-        -- Get the network name (e.g., environment_detector_0)
-        local name = peripheral.getName(d)
-        local entities = d.scanEntities(4) -- Small range since it's 1-per-pod
-        
+        local entities = d.scanEntities(4)
         local alive = false
+        
         for _, e in pairs(entities) do
+            -- Using your verified "Unemployed" name check
             if e.name == "Unemployed" then
                 alive = true
                 break
             end
         end
 
-        -- Print status for this specific pod
+        -- Display the sequential "Villager #"
         term.setCursorPos(1, i + 2)
+        term.setTextColor(colors.white)
+        write("Villager " .. i .. ": ")
+
         if alive then
             term.setTextColor(colors.green)
-            print(name .. ": [ OK ]")
+            print("[ ALIVE ]")
         else
             term.setTextColor(colors.red)
-            print(name .. ": [ MISSING ]")
-            -- Optional: You can trigger redstone on a per-pod basis 
-            -- if the computer is touching the pod's redstone input.
+            print("[ DEAD ]")
+            -- Trigger an alarm if any one of them dies
+            redstone.setOutput("back", true)
         end
     end
 
