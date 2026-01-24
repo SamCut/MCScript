@@ -1,27 +1,30 @@
--- This finds the reader over the network
-local reader = peripheral.find("block_reader")
+local detector = peripheral.find("environmentDetector")
+
+-- Configuration
+local TARGET_TYPE = "minecraft:villager"
+local RADIUS = 5 -- Keep this small so you don't detect outside the pod
 
 while true do
     term.clear()
     term.setCursorPos(1,1)
     
-    local data = reader.getBlockData()
+    local entities = detector.scanEntities(RADIUS)
+    local found = false
     
-    if data then
-        -- This line prints the block name it's currently looking at
-        print("Looking at: " .. (data.name or "Unknown"))
-        
-        local info = textutils.serialize(data):lower()
-        
-        -- If it sees the villager standing in that block, it triggers
-        if info:find("villager") then
-            print("VILLAGER: [ FOUND ]")
-        else
-            print("VILLAGER: [ NOT SEEN ]")
+    for _, entity in pairs(entities) do
+        if entity.type == TARGET_TYPE then
+            found = true
+            print("Villager: ALIVE")
+            -- Some versions of the mod don't return health for passives
+            if entity.health then
+                print("Health: " .. entity.health)
+            end
         end
-    else
-        print("ERROR: Reader is not facing a valid block.")
     end
     
-    sleep(1)
+    if not found then
+        print("ALERT: VILLAGER DEAD OR MISSING")
+    end
+    
+    sleep(2)
 end
