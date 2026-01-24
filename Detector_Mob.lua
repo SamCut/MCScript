@@ -1,21 +1,17 @@
-local scanner = peripheral.find("geo_scanner")
+local detector = peripheral.find("playerDetector")
 
 while true do
     term.clear()
     term.setCursorPos(1,1)
     
-    -- The first '8' is radius. 
-    -- The FIRST 'true' tells it to scan for ENTITIES.
-    -- The SECOND 'true' (if supported) tells it to ignore blocks.
-    local results = scanner.scan(8, true) 
+    -- This function is the ONLY one in AP that sees villagers in 1.21
+    local entities = detector.getEntitiesInRange(5)
     local found = false
     
-    if results then
-        for _, obj in pairs(results) do
-            -- We check 'name' and 'type' because different mods label mobs differently
-            local id = (obj.type or obj.name or ""):lower()
-            
-            if id:find("villager") then
+    if entities then
+        for _, name in pairs(entities) do
+            -- Mobs are returned as strings like "minecraft:villager"
+            if name:find("villager") then
                 found = true
                 break
             end
@@ -23,10 +19,10 @@ while true do
     end
     
     if found then
-        print("STATUS: VILLAGER SPOTTED")
+        print("STATUS: VILLAGER ALIVE")
     else
-        print("STATUS: EMPTY / NOT SEEN")
+        print("!!! ALERT: VILLAGER GONE !!!")
     end
     
-    sleep(2) -- Cooldown for the scanner
+    sleep(2)
 end
