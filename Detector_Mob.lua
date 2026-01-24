@@ -1,24 +1,23 @@
-local TARGET = "villager"
-
 while true do
+    -- Find the scanner (geo_scanner_1 in your images)
     local scanners = { peripheral.find("geo_scanner") }
+    
     term.clear()
     term.setCursorPos(1,1)
     print("--- MONITORING [" .. #scanners .. "] ---")
 
     for _, scanner in ipairs(scanners) do
-        -- The 'true' here is the "Barely Anything" change that actually matters:
-        -- It forces the scanner to look for ENTITIES, not just blocks.
+        -- CRITICAL CHANGE: The 'true' tells the scanner to find ENTITIES
+        -- If this is missing, you only see blackstone bricks!
         local results = scanner.scan(8, true) 
         local found = false
         
         if results then
             for _, obj in pairs(results) do
-                -- Check for species/type
-                local name = (obj.name or ""):lower()
-                local type = (obj.type or ""):lower()
-
-                if name:find(TARGET) or type:find(TARGET) then
+                -- We check 'type' because 'name' is often for blocks
+                local check = (obj.type or obj.name or ""):lower()
+                
+                if check:find("villager") then
                     found = true
                     break
                 end
@@ -29,5 +28,6 @@ while true do
         print(peripheral.getName(scanner) .. ": " .. status)
     end
 
-    sleep(3) -- Prevent cooldown crash
+    -- Cooldown is ~2 seconds in 1.21
+    sleep(3)
 end
