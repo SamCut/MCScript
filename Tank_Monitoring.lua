@@ -8,7 +8,7 @@ end
 
 local function drawBar(percent)
     local w, h = mon.getSize()
-    local barWidth = w - 9
+    local barWidth = w - 2
     local filledWidth = math.floor((percent / 100) * barWidth)
     
     -- Background (Gray)
@@ -46,7 +46,7 @@ while true do
     mon.setTextScale(1)
     mon.setCursorPos(1, 1)
     mon.setTextColor(colors.red)
-    mon.write("--- BLOOD MONITORING SYSTEM ---")
+    mon.write("-- BLOOD MONITORING SYSTEM --")
 
     if #tanks > 0 then
 local percent = (currentAmount / totalMax) * 100
