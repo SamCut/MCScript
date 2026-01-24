@@ -1,42 +1,46 @@
--- Use find() so you don't have to worry about the exact network ID
 local detector = peripheral.find("environment_detector")
 
--- Safety check: Stop the program if it's not connected
-if not detector then
-    print("Error: Environment Detector not found on network!")
-    print("Make sure the modem on the detector is RED (Right-Click it).")
-    return
-end
+-- Comprehensive list of villager professions in ATM 10
+local villagerProfessions = {
+    ["Unemployed"] = true, ["Nitwit"] = true, ["Armorer"] = true,
+    ["Butcher"] = true, ["Cartographer"] = true, ["Cleric"] = true,
+    ["Farmer"] = true, ["Fisherman"] = true, ["Fletcher"] = true,
+    ["Leatherworker"] = true, ["Librarian"] = true, ["Mason"] = true,
+    ["Shepherd"] = true, ["Toolsmith"] = true, ["Weaponsmith"] = true
+}
 
-local TARGET = "minecraft:villager"
-local RADIUS = 8
+local RANGE = 8
 
 while true do
     term.clear()
     term.setCursorPos(1,1)
     
-    -- Check if the function exists (sometimes it's scanEntities, sometimes scan)
-    local entities = {}
-    if detector.scanEntities then
-        entities = detector.scanEntities(RADIUS)
-    else
-        print("Function 'scanEntities' not found. Checking for 'scan'...")
-        entities = detector.scan(RADIUS)
-    end
+    local entities = detector.scanEntities(RANGE)
+    local found = false
+    local currentJob = "None"
 
-    local alive = false
     for _, entity in pairs(entities) do
-        if entity.type == TARGET then
-            alive = true
-            print("Villager: ALIVE")
-            if entity.health then print("Health: " .. entity.health) end
+        -- Check if the entity's name matches any profession in our list
+        if villagerProfessions[entity.name] then
+            found = true
+            currentJob = entity.name
+            break
         end
     end
 
-    if not alive then
-        print("ALERT: VILLAGER IS DEAD")
-        -- Optional: redstone.setOutput("top", true)
+    if found then
+        term.setTextColor(colors.green)
+        print("STATUS: VILLAGER ALIVE")
+        term.setTextColor(colors.white)
+        print("Profession: " .. currentJob)
+        redstone.setOutput("back", false) -- Turn off alarm
+    else
+        term.setTextColor(colors.red)
+        print("ALERT: VILLAGER GONE!")
+        term.setTextColor(colors.white)
+        print("No living villager within " .. RANGE .. " blocks.")
+        redstone.setOutput("back", true) -- Trigger alarm/spawner
     end
 
-    sleep(2)
+    sleep(2) -- Check every 2 seconds to reduce lag
 end
