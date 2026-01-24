@@ -1,28 +1,27 @@
-local detector = peripheral.find("playerDetector")
+-- This finds the reader over the network
+local reader = peripheral.find("block_reader")
 
 while true do
     term.clear()
     term.setCursorPos(1,1)
     
-    -- This function is the ONLY one in AP that sees villagers in 1.21
-    local entities = detector.getEntitiesInRange(5)
-    local found = false
+    local data = reader.getBlockData()
     
-    if entities then
-        for _, name in pairs(entities) do
-            -- Mobs are returned as strings like "minecraft:villager"
-            if name:find("villager") then
-                found = true
-                break
-            end
+    if data then
+        -- This line prints the block name it's currently looking at
+        print("Looking at: " .. (data.name or "Unknown"))
+        
+        local info = textutils.serialize(data):lower()
+        
+        -- If it sees the villager standing in that block, it triggers
+        if info:find("villager") then
+            print("VILLAGER: [ FOUND ]")
+        else
+            print("VILLAGER: [ NOT SEEN ]")
         end
-    end
-    
-    if found then
-        print("STATUS: VILLAGER ALIVE")
     else
-        print("!!! ALERT: VILLAGER GONE !!!")
+        print("ERROR: Reader is not facing a valid block.")
     end
     
-    sleep(2)
+    sleep(1)
 end
