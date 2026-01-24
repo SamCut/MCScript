@@ -1,5 +1,5 @@
 while true do
-    -- Finds your 'geo_scanner_1'
+    -- Find all scanners by type 'geo_scanner'
     local scanners = { peripheral.find("geo_scanner") }
     
     term.clear()
@@ -8,29 +8,29 @@ while true do
 
     for i, scanner in ipairs(scanners) do
         local name = peripheral.getName(scanner)
-        -- Radius 8 is good, but let's be thorough
+        -- Use a larger radius (8) to ensure it reaches the pod from the computer
         local results = scanner.scan(8) 
         local found = false
         
         if results then
             for _, obj in pairs(results) do
-                -- Debug: Let's check 'type' instead of 'name'
-                -- Entities usually have a 'type' field like "minecraft:villager"
-                local check = obj.type or obj.name or ""
+                -- Check for both 'type' and 'name' fields
+                -- Many 1.21 entities store their species in 'type'
+                local check = (obj.type or obj.name or ""):lower()
                 
-                if check:lower():find("villager") then
+                if check:find("villager") then
                     found = true
+                    -- Uncomment the next line once to see exactly what the scanner calls it
+                    -- print("SUCCESS: Found " .. check)
                     break
                 end
             end
         end
 
         local status = found and "OK" or "EMPTY"
-        -- This will print the scanner name and current status
         print(name .. ": " .. status)
-        
-        -- If it's EMPTY, we can trigger an alert here later
     end
 
+    -- Scanners have a 2-3 second cooldown; don't scan too fast!
     sleep(3)
 end
