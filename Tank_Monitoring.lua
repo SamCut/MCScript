@@ -45,22 +45,20 @@ while true do
     mon.clear()
     mon.setTextScale(1)
     mon.setCursorPos(1, 1)
-    mon.setTextColor(colors.yellow)
+    mon.setTextColor(colors.red)
     mon.write("--- BLOOD MONITORING SYSTEM ---")
-    mon.setTextColor(colors.white)
 
     if #tanks > 0 then
         local percent = (currentAmount / totalMax) * 100
         
         mon.setCursorPos(2, 3)
-        mon.write("Tanks Detected: " .. #tanks)
+        mon.write(string.format("%-18s %10d", "Tanks Detected:", #tanks))
         mon.setCursorPos(2, 4)
-        mon.write("Current Amount:   " .. currentAmount .. " mB")
+        mon.write(string.format("%-18s %10d mB", "Current Amount:", currentAmount))
         mon.setCursorPos(2, 5)
-        mon.write("Maxium:      " .. totalMax .. " mB")
-        
+        mon.write(string.format("%-18s %10d mB", "Maximum Capacity:", totalMax))
         mon.setCursorPos(2, 6)
-        mon.write(string.format("Fill:           %.1f%%", percent))
+        mon.write(string.format("%-18s %10.1f%%", "Fill Level:", percent))
         
         drawBar(percent)
     else
