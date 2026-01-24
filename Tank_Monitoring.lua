@@ -51,22 +51,22 @@ while true do
     if #tanks > 0 then
 local percent = (currentAmount / totalMax) * 100
         
-        -- FORMATTING: 16 char labels + 8 char values fits a 3x2 monitor perfectly
-        local lbl = 16
-        local val = 8
+        -- ALIGNMENT: 15 char labels + 7 char values keeps everything 
+        -- away from the right-hand bezel of a 3x2 monitor.
+        local L = 15
+        local V = 7
 
-        mon.setCursorPos(2, 3)
-        mon.write(string.format("%-"..lbl.."s %"..val.."d", "Tanks Detected:", #tanks))
+        mon.setCursorPos(3, 3)
+        mon.write(string.format("%-"..L.."s %"..V.."d", "Tanks:", #tanks))
         
-        mon.setCursorPos(2, 4)
-        -- Converting mB to Buckets (B) to keep the strings shorter
-        mon.write(string.format("%-"..lbl.."s %"..val.."d B", "Current Amount:", currentAmount / 1000))
+        mon.setCursorPos(3, 4)
+        mon.write(string.format("%-"..L.."s %"..V.."d B", "Current:", currentAmount / 1000))
         
-        mon.setCursorPos(2, 5)
-        mon.write(string.format("%-"..lbl.."s %"..val.."d B", "Max Capacity:", totalMax / 1000))
+        mon.setCursorPos(3, 5)
+        mon.write(string.format("%-"..L.."s %"..V.."d B", "Max Cap:", totalMax / 1000))
         
-        mon.setCursorPos(2, 6)
-        mon.write(string.format("%-"..lbl.."s %"..val..".1f%%", "Fill Level:", percent))
+        mon.setCursorPos(3, 6)
+        mon.write(string.format("%-"..L.."s %"..V..".1f%%", "Fill:", percent))
         
         drawBar(percent)
     else
