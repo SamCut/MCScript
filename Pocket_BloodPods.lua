@@ -1,13 +1,17 @@
-rednet.open("back") -- Pocket computers usually have modems on the back
-local hostID = 12 -- CHANGE THIS to the ID of your Pod Computer
+rednet.open("back") -- Modem is usually on the back of pocket computers
+local hostID = 12 -- REMEMBER: Change this to your main computer's ID!
 local password = "apple"
 
-print("Blood Pod Remote")
-print("1. Enable Pods")
-print("2. Purge Pods")
-
 while true do
-    write("Command: ")
+    term.clear()
+    term.setCursorPos(1,1)
+    print("--- Blood Pod Remote ---")
+    print("1. Enable Pods")
+    print("2. Purge Pods")
+    print("3. Exit Remote")
+    print("----------------------")
+    
+    write("Select option: ")
     local input = read()
     local cmd = ""
 
@@ -15,21 +19,28 @@ while true do
         cmd = "enable"
     elseif input == "2" or input == "purge" then
         cmd = "purge"
+    elseif input == "3" or input == "exit" then
+        print("Exiting...")
+        sleep(0.5)
+        break -- Breaks the loop and ends the program
     else
         print("Invalid option.")
+        sleep(1)
     end
 
+    -- If a command was set (and we aren't exiting), send it
     if cmd ~= "" then
         print("Sending signal...")
-        -- Sends "apple:enable" or "apple:purge"
         rednet.send(hostID, password .. ":" .. cmd)
         
-        -- Wait for confirmation from the main computer
+        -- Wait for confirmation
         local senderId, reply = rednet.receive(2)
         if reply then
             print("Server: " .. reply)
         else
-            print("No response from server.")
+            print("Error: No response from base.")
         end
+        print("Press Enter to continue...")
+        read()
     end
 end
