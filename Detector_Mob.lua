@@ -1,22 +1,21 @@
 while true do
-    -- Use the snake_case type found in your logs
     local scanners = { peripheral.find("geo_scanner") }
-    
     term.clear()
     term.setCursorPos(1,1)
     print("--- POD MONITORING [" .. #scanners .. "] ---")
 
     for i, scanner in ipairs(scanners) do
         local name = peripheral.getName(scanner)
-        
-        -- CHANGE: 'scanEntities' is now just 'scan' in 1.21
-        local entities = scanner.scan(4) 
+        -- Increased radius to 8 to reach the pod
+        local entities = scanner.scan(8) 
         local found = false
         
         if entities then
             for _, entity in pairs(entities) do
-                -- In some versions, 'name' might be 'type' or 'displayName'
-                if entity.name and entity.name:find("Villager") then
+                -- This debug line helps find the exact name if 'Villager' fails
+                -- print("Saw: " .. tostring(entity.name)) 
+
+                if entity.name and entity.name:lower():find("villager") then
                     found = true
                     break
                 end
@@ -27,6 +26,5 @@ while true do
         print(name .. ": " .. status)
     end
 
-    -- Keep the 3s sleep to avoid scanner cooldown errors
     sleep(3)
 end
