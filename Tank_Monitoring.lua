@@ -28,7 +28,7 @@ end
 while true do
     -- 1. Find ALL tanks on the network
     local tanks = { peripheral.find("fluid_storage") }
-    local totalAmount = 0
+    local currentAmount = 0
     local totalMax = #tanks * CAPACITY_PER_TANK
     local fluidName = "Empty"
 
@@ -36,7 +36,7 @@ while true do
     for i = 1, #tanks do
         local info = tanks[i].tanks()[1]
         if info and info.amount > 0 then
-            totalAmount = totalAmount + info.amount
+            currentAmount = currentAmount + info.amount
             fluidName = info.name or fluidName
         end
     end
@@ -50,14 +50,14 @@ while true do
     mon.setTextColor(colors.white)
 
     if #tanks > 0 then
-        local percent = (totalAmount / totalMax) * 100
+        local percent = (currentAmount / totalMax) * 100
         
         mon.setCursorPos(2, 3)
         mon.write("Tanks Detected: " .. #tanks)
         mon.setCursorPos(2, 4)
-        mon.write("Total Amount:   " .. totalAmount .. " mB")
+        mon.write("Current Amount:   " .. currentAmount .. " mB")
         mon.setCursorPos(2, 5)
-        mon.write("Total Max:      " .. totalMax .. " mB")
+        mon.write("Maxium:      " .. totalMax .. " mB")
         
         mon.setCursorPos(2, 6)
         mon.write(string.format("Fill:           %.1f%%", percent))
