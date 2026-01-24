@@ -1,36 +1,32 @@
--- Configuration
-local TARGET_MOB = "Villager"
-local SCAN_RADIUS = 2 -- Small radius to only see what's in the pod
-
 while true do
-    -- 1. Find ALL scanners on the network
-    local scanners = { peripheral.find("geoScanner") }
+    -- Use the snake_case type found in your logs
+    local scanners = { peripheral.find("geo_scanner") }
     
     term.clear()
     term.setCursorPos(1,1)
     print("--- POD MONITORING [" .. #scanners .. "] ---")
 
     for i, scanner in ipairs(scanners) do
-        -- 2. Scan for entities at each specific scanner
-        local entities = scanner.scanEntities(SCAN_RADIUS)
-        local isAlive = false
+        local name = peripheral.getName(scanner)
         
-        -- The scanner returns nil if it's on cooldown, so we check first
+        -- CHANGE: 'scanEntities' is now just 'scan' in 1.21
+        local entities = scanner.scan(4) 
+        local found = false
+        
         if entities then
             for _, entity in pairs(entities) do
-                if entity.name == TARGET_MOB then
-                    isAlive = true
+                -- In some versions, 'name' might be 'type' or 'displayName'
+                if entity.name and entity.name:find("Villager") then
+                    found = true
                     break
                 end
             end
         end
 
-        -- 3. Print status for this specific pod
-        local status = isAlive and "OK" or "EMPTY"
-        -- We use scanner.getNameLocal() or peripheral.getName(scanner) to identify which is which
-        print("Pod " .. i .. " (" .. peripheral.getName(scanner) .. "): " .. status)
+        local status = found and "OK" or "EMPTY"
+        print(name .. ": " .. status)
     end
 
-    -- Scanners have a 2-3 second cooldown in 1.21
+    -- Keep the 3s sleep to avoid scanner cooldown errors
     sleep(3)
 end
