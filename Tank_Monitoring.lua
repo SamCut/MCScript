@@ -8,7 +8,7 @@ end
 
 local function drawBar(percent)
     local w, h = mon.getSize()
-    local barWidth = w - 4
+    local barWidth = w - 5
     local filledWidth = math.floor((percent / 100) * barWidth)
     
     -- Background (Gray)
