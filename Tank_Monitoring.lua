@@ -8,7 +8,7 @@ end
 
 local function drawBar(percent)
     local w, h = mon.getSize()
-    local barWidth = w - 5
+    local barWidth = w - 9
     local filledWidth = math.floor((percent / 100) * barWidth)
     
     -- Background (Gray)
@@ -54,9 +54,9 @@ while true do
         mon.setCursorPos(2, 3)
         mon.write(string.format("%-18s %10d", "Tanks Detected:", #tanks))
         mon.setCursorPos(2, 4)
-        mon.write(string.format("%-18s %10d mB", "Current Amount:", currentAmount))
+        mon.write(string.format("%-18s %10d B", "Current Amount:", (currentAmount/1000)))
         mon.setCursorPos(2, 5)
-        mon.write(string.format("%-18s %10d mB", "Maximum Capacity:", totalMax))
+        mon.write(string.format("%-18s %10d B", "Maximum Capacity:", (totalMax/1000)))
         mon.setCursorPos(2, 6)
         mon.write(string.format("%-18s %10.1f%%", "Fill Level:", percent))
         
