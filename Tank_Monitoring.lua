@@ -49,16 +49,24 @@ while true do
     mon.write("--- BLOOD MONITORING SYSTEM ---")
 
     if #tanks > 0 then
-        local percent = (currentAmount / totalMax) * 100
+local percent = (currentAmount / totalMax) * 100
         
+        -- FORMATTING: 16 char labels + 8 char values fits a 3x2 monitor perfectly
+        local lbl = 16
+        local val = 8
+
         mon.setCursorPos(2, 3)
-        mon.write(string.format("%-18s %10d", "Tanks Detected:", #tanks))
-        mon.setCursorPos(2, 3)
-        mon.write(string.format("%-18s %10d B", "Current Amount:", (currentAmount/1000)))
+        mon.write(string.format("%-"..lbl.."s %"..val.."d", "Tanks Detected:", #tanks))
+        
         mon.setCursorPos(2, 4)
-        mon.write(string.format("%-18s %10d B", "Maximum Capacity:", (totalMax/1000)))
+        -- Converting mB to Buckets (B) to keep the strings shorter
+        mon.write(string.format("%-"..lbl.."s %"..val.."d B", "Current Amount:", currentAmount / 1000))
+        
+        mon.setCursorPos(2, 5)
+        mon.write(string.format("%-"..lbl.."s %"..val.."d B", "Max Capacity:", totalMax / 1000))
+        
         mon.setCursorPos(2, 6)
-        mon.write(string.format("%-18s %10.1f%%", "Fill Level:", percent))
+        mon.write(string.format("%-"..lbl.."s %"..val..".1f%%", "Fill Level:", percent))
         
         drawBar(percent)
     else
