@@ -45,9 +45,9 @@ local function findUniqueTanks()
 
     -- Add generic fluid storage
     addTanks("fluid_storage")
-    -- Add specific Mekanism types (Dynamic Valves are distinct from Tanks)
-    addTanks("mekanism:dynamic_tank")
-    addTanks("mekanism:dynamic_valve")
+    
+    -- ONLY add Valves. Structural "dynamic_tank" blocks often report 0 data.
+    addTanks("mekanism:dynamic_valve") 
     
     return foundTanks
 end
@@ -82,8 +82,8 @@ end
 -- =============================================
 -- MAIN LOOP
 -- =============================================
-print("Starting Blood Monitor...")
-print("Check this screen for debug info if Monitor is empty.")
+print("Blood Monitor Running...")
+print("Reading from Valves & Detectors.")
 
 while true do
     local w, h = mon.getSize()
@@ -94,15 +94,8 @@ while true do
     local currentAmount = 0
     local totalMax = 0
     
-    -- Clear local console every loop to keep debug clean
-    term.clear()
-    term.setCursorPos(1,1)
-    print("--- DEBUG LOG ---")
-    print("Tanks Found: " .. #tanks)
-
     for _, tank in ipairs(tanks) do
         local tankInfoFound = false
-        local tName = peripheral.getName(tank)
         local tCap, tAmt = 0, 0
         
         -- Method 1: Generic peripheral.call("tanks") - Standard CC
@@ -114,7 +107,6 @@ while true do
                      tCap = tCap + (tInfo.capacity or FALLBACK_CAPACITY)
                 end
                 tankInfoFound = true
-                print(tName .. ": Used .tanks()")
             end
         end
 
@@ -129,7 +121,6 @@ while true do
                         tCap = tCap + (tData.capacity or 0)
                     end
                     tankInfoFound = true
-                    print(tName .. ": Used .getTanks() (Table)")
                 elseif type(result) == "number" and result > 0 then
                     -- Count (Mekanism style)
                     for i = 1, result do
@@ -139,13 +130,10 @@ while true do
                         local cap = 0
                         if tank.getTankCapacity then cap = tank.getTankCapacity(i) or 0 end
                         
-                        if cap > 0 then
-                           tAmt = tAmt + lvl
-                           tCap = tCap + cap
-                           tankInfoFound = true
-                        end
+                        tAmt = tAmt + lvl
+                        tCap = tCap + cap
+                        tankInfoFound = true
                     end
-                    if tankInfoFound then print(tName .. ": Used .getTanks() (Count)") end
                 end
             end
         end
@@ -167,7 +155,6 @@ while true do
                          end
                      end
                  end
-                 if tankInfoFound then print(tName .. ": Used .getTankInfo") end
              end
         end
 
@@ -183,30 +170,23 @@ while true do
                  if type(s) == "table" then amt = s.amount or 0 else amt = s or 0 end
             end
             
-            if cap > 0 then
+            -- Relaxed check: if we got ANY read, use it.
+            if cap > 0 or amt > 0 then
                 tCap = tCap + cap
                 tAmt = tAmt + amt
                 tankInfoFound = true
-                print(tName .. ": Used .getCapacity/Amount")
             end
         end
 
-        -- Fallback: If logic failed completely, do we add dummy data?
-        if not tankInfoFound then
-            if not tName:find("mekanism") then
-                tCap = tCap + FALLBACK_CAPACITY
-                print(tName .. ": Fallback Used")
-            else
-                print(tName .. ": SKIPPED (No readable data)")
-            end
+        if tankInfoFound then
+            currentAmount = currentAmount + tAmt
+            totalMax = totalMax + tCap
         end
-        
-        currentAmount = currentAmount + tAmt
-        totalMax = totalMax + tCap
     end
 
     -- Avoid division by zero if no tanks are connected
-    if totalMax == 0 then totalMax = 1 end
+    local displayMax = totalMax
+    if displayMax == 0 then displayMax = 1 end
 
     -- --- PART 2: VITALS SCANNING ---
     local vitalsData = {}
@@ -243,7 +223,7 @@ while true do
     mon.write("-- BLOOD MONITORING SYSTEM --")
     
     if #tanks > 0 then
-        local percent = (currentAmount / totalMax) * 100
+        local percent = (currentAmount / displayMax) * 100
         -- Increased V from 7 to 10 to handle large Dynamic Tank numbers
         local L, V = 12, 10 
         
@@ -264,6 +244,7 @@ while true do
         mon.write(string.format("%-"..L.."s %"..V..".1f%%", "Fill:", percent))
         
         drawBar(percent)
+        
     else
         mon.setCursorPos(3, 4)
         mon.setTextColor(colors.red)
@@ -274,14 +255,14 @@ while true do
     -- Draw a separator line
     mon.setBackgroundColor(colors.black)
     mon.setTextColor(colors.yellow)
-    mon.setCursorPos(1, 9) 
+    mon.setCursorPos(1, 11) 
     mon.write(string.rep("-", w))
-    mon.setCursorPos(2, 10)
+    mon.setCursorPos(2, 12)
     mon.write("POD STATUS:")
 
     -- Dynamic Grid Logic
     local currentX = 2
-    local currentY = VITALS_START_Y
+    local currentY = 13
     
     for _, v in ipairs(vitalsData) do
         mon.setCursorPos(currentX, currentY)
@@ -304,7 +285,7 @@ while true do
         
         -- If we hit the bottom of the monitor, move to new column
         if currentY > h then
-            currentY = VITALS_START_Y
+            currentY = 13
             currentX = currentX + COL_WIDTH
         end
 
