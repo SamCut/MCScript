@@ -45,8 +45,9 @@ local function findUniqueTanks()
 
     -- Add generic fluid storage
     addTanks("fluid_storage")
-    -- Add specific Mekanism tanks (in case they aren't caught by generic)
+    -- Add specific Mekanism types (Dynamic Valves are distinct from Tanks)
     addTanks("mekanism:dynamic_tank")
+    addTanks("mekanism:dynamic_valve")
     
     return foundTanks
 end
@@ -106,13 +107,16 @@ while true do
 
         -- 2. Get Capacity (Dynamic logic)
         local thisCap = 0
-        -- First try the table returned by .tanks()
+        -- Priority 1: Check standard table return
         if tankInfo and tankInfo.capacity then
             thisCap = tankInfo.capacity
-        -- Second, try a direct .getCapacity() method (common in Mekanism)
+        -- Priority 2: Check .getCapacity() (Common Mekanism)
         elseif tank.getCapacity then
             thisCap = tank.getCapacity()
-        -- Fallback to config
+        -- Priority 3: Check .getTankCapacity() (Alternative wrapper method)
+        elseif tank.getTankCapacity then
+            thisCap = tank.getTankCapacity()
+        -- Fallback
         else
             thisCap = FALLBACK_CAPACITY
         end
