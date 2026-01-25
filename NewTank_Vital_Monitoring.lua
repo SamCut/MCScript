@@ -1,12 +1,7 @@
 -- =============================================
 -- CONFIGURATION
 -- =============================================
--- Fallback capacity if a tank doesn't report its own size
-local FALLBACK_CAPACITY = 16000 
-
--- Where the vital list starts (Row 11 gives space for the blood UI)
 local VITALS_START_Y = 11 
--- How wide each villager column is (e.g., "V1: [ALIVE]" is ~12 chars)
 local COL_WIDTH = 14 
 
 -- =============================================
@@ -22,59 +17,8 @@ table.sort(detectors, function(a, b)
 end)
 
 -- =============================================
--- STATE MANAGEMENT (CACHING)
--- =============================================
-local tankCache = {} 
-
--- =============================================
 -- HELPER FUNCTIONS
 -- =============================================
-
--- NEW: Universal Scanner
--- Scans ALL connected peripherals and checks if they have tank functions
-local function scanForTanks()
-    local candidates = {}
-    local allPeripherals = peripheral.getNames()
-    
-    -- Debug: Print what we see to local console
-    term.clear()
-    term.setCursorPos(1,1)
-    print("--- DIAGNOSTIC MODE ---")
-    print("Connected Peripherals:")
-    
-    for _, name in ipairs(allPeripherals) do
-        -- Skip known non-tanks to save processing
-        if name ~= "back" and name ~= "front" and name ~= "top" and 
-           not name:find("monitor") and 
-           not name:find("detector") and 
-           not name:find("modem") then
-            
-            local p = peripheral.wrap(name)
-            if p then
-                -- DUCK TYPING: If it walks like a tank, it's a tank.
-                -- Check if it has ANY common fluid methods
-                if p.tanks or p.getTanks or p.getTankLevel or p.getTankInfo or p.getFluid or p.getCapacity then
-                    table.insert(candidates, p)
-                    print(" [TANK] " .. name) -- Mark as valid tank
-                else
-                    print(" [OTHER] " .. name) -- Connected, but not a tank
-                end
-            end
-        else
-            -- Print excluded peripherals just so user knows they are seen
-            if not name:find("modem") then -- modems spam the list
-                 print(" [SYS] " .. name)
-            end
-        end
-    end
-    
-    if #candidates == 0 then
-        print("\nWARNING: No tank-like peripherals found!")
-        print("Ensure modems on Valves are RED.")
-    end
-    
-    return candidates
-end
 
 local function formatNumber(n)
     return tostring(math.floor(n)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
@@ -84,13 +28,11 @@ local function drawBar(percent)
     local w, h = mon.getSize()
     local barWidth = w - 2
     local filledWidth = math.floor((percent / 100) * barWidth)
-    
     if filledWidth > barWidth then filledWidth = barWidth end
     
     mon.setCursorPos(2, 8)
     mon.setBackgroundColor(colors.gray)
     mon.write(string.rep(" ", barWidth))
-    
     if filledWidth > 0 then
         mon.setCursorPos(2, 8)
         mon.setBackgroundColor(colors.red)
@@ -100,144 +42,191 @@ local function drawBar(percent)
 end
 
 -- =============================================
+-- DEBUG / DIAGNOSTIC SCREEN
+-- =============================================
+-- Draws a raw list of what the computer actually sees
+local function drawDebugScreen(candidates)
+    mon.clear()
+    mon.setTextScale(0.5) -- Small text to fit more info
+    mon.setCursorPos(1,1)
+    mon.setTextColor(colors.orange)
+    mon.write("DIAGNOSTIC MODE - NO VALID TANKS")
+    mon.setCursorPos(1,2)
+    mon.setTextColor(colors.white)
+    mon.write("Checking connections...")
+    
+    local y = 4
+    if #candidates == 0 then
+        mon.setCursorPos(1, y)
+        mon.setTextColor(colors.red)
+        mon.write("NO PERIPHERALS FOUND!")
+        mon.setCursorPos(1, y+1)
+        mon.write("Check Wired Modems (Must be RED)")
+    else
+        for _, info in ipairs(candidates) do
+            mon.setCursorPos(1, y)
+            if info.isTank then
+                mon.setTextColor(colors.green)
+            else
+                mon.setTextColor(colors.gray)
+            end
+            
+            -- Format: "name | type | Cap: 1000"
+            local str = string.format("%s | %s | Cap:%s", info.name, info.type, info.cap or "?")
+            mon.write(str)
+            
+            y = y + 1
+            if y > 30 then break end -- Stop if screen full
+        end
+    end
+end
+
+-- =============================================
+-- TANK SCANNING LOGIC
+-- =============================================
+local function scanAndReadTanks()
+    local allNames = peripheral.getNames()
+    local validTanks = {} -- Tanks that have fluid data
+    local debugList = {}  -- Everything we found (for debug screen)
+    
+    local totalAmt = 0
+    local totalCap = 0
+    
+    for _, name in ipairs(allNames) do
+        -- Skip standard non-tank peripherals to clean up debug list
+        if not name:find("monitor") and 
+           not name:find("detector") and 
+           not name:find("modem") and 
+           name ~= "back" and name ~= "front" and name ~= "top" and name ~= "bottom" then
+            
+            local p = peripheral.wrap(name)
+            local pType = peripheral.getType(p)
+            local tCap, tAmt = 0, 0
+            local readSuccess = false
+
+            -- ATTEMPT 1: Standard .tanks()
+            if not readSuccess and p.tanks then 
+                local success, data = pcall(p.tanks)
+                if success and data and #data > 0 then
+                    for _, tInfo in pairs(data) do
+                         tAmt = tAmt + (tInfo.amount or 0)
+                         tCap = tCap + (tInfo.capacity or 0)
+                    end
+                    readSuccess = true
+                end
+            end
+
+            -- ATTEMPT 2: Mekanism .getTanks()
+            if not readSuccess and p.getTanks then
+                local success, result = pcall(p.getTanks)
+                if success then
+                    if type(result) == "table" then
+                        for _, tData in pairs(result) do
+                            tAmt = tAmt + (tData.amount or 0)
+                            tCap = tCap + (tData.capacity or 0)
+                        end
+                        readSuccess = true
+                    elseif type(result) == "number" and result > 0 then
+                        for i = 1, result do
+                            local lvl = 0
+                            if p.getTankLevel then lvl = p.getTankLevel(i) or 0 end
+                            local cap = 0
+                            if p.getTankCapacity then cap = p.getTankCapacity(i) or 0 end
+                            tAmt = tAmt + lvl
+                            tCap = tCap + cap
+                        end
+                        readSuccess = true
+                    end
+                end
+            end
+            
+            -- ATTEMPT 3: getFluidTankProperties (Older versions)
+            if not readSuccess and p.getFluidTankProperties then
+                local success, props = pcall(p.getFluidTankProperties)
+                if success and type(props) == "table" then
+                    for _, prop in pairs(props) do
+                        local contents = prop.contents
+                        if contents then tAmt = tAmt + (contents.amount or 0) end
+                        tCap = tCap + (prop.capacity or 0)
+                    end
+                    readSuccess = true
+                end
+            end
+
+            -- Store info for Debug Screen
+            table.insert(debugList, {
+                name = name,
+                type = pType,
+                cap = tCap,
+                isTank = (tCap > 0)
+            })
+
+            -- Add to totals if it's a valid tank
+            if tCap > 0 then
+                totalAmt = totalAmt + tAmt
+                totalCap = totalCap + tCap
+                table.insert(validTanks, p)
+            end
+        end
+    end
+    
+    return validTanks, totalAmt, totalCap, debugList
+end
+
+-- =============================================
 -- MAIN LOOP
 -- =============================================
-print("\nStarting Monitor Loop...")
+print("Monitor running...")
 
 while true do
     local w, h = mon.getSize()
-
-    -- --- PART 1: FLUID LOGIC ---
-    -- Using the new scanner
-    local tanks = scanForTanks()
     
-    local currentAmount = 0
-    local totalMax = 0
-    local tanksFoundCount = 0
+    -- Scan everything
+    local tanks, currentAmount, totalMax, debugList = scanAndReadTanks()
     
-    for _, tank in ipairs(tanks) do
-        local tName = peripheral.getName(tank)
-        local tCap, tAmt = 0, 0
-        local readSuccess = false
-
-        -- ATTEMPT 1: Standard .tanks()
-        if not readSuccess and tank.tanks then 
-            local success, data = pcall(tank.tanks)
-            if success and data and #data > 0 then
-                for _, tInfo in pairs(data) do
-                     tAmt = tAmt + (tInfo.amount or 0)
-                     tCap = tCap + (tInfo.capacity or 0)
-                end
-                if tCap > 0 then readSuccess = true end
-            end
-        end
-
-        -- ATTEMPT 2: Mekanism .getTanks()
-        if not readSuccess and tank.getTanks then
-            local success, result = pcall(tank.getTanks)
-            if success then
-                -- Scenario A: Returns Table of info
-                if type(result) == "table" then
-                    for _, tData in pairs(result) do
-                        tAmt = tAmt + (tData.amount or 0)
-                        tCap = tCap + (tData.capacity or 0)
-                    end
-                    if tCap > 0 then readSuccess = true end
-                
-                -- Scenario B: Returns Count of tanks
-                elseif type(result) == "number" and result > 0 then
-                    for i = 1, result do
-                        local lvl = 0
-                        if tank.getTankLevel then lvl = tank.getTankLevel(i) or 0 end
-                        local cap = 0
-                        if tank.getTankCapacity then cap = tank.getTankCapacity(i) or 0 end
-                        
-                        tAmt = tAmt + lvl
-                        tCap = tCap + cap
-                    end
-                    if tCap > 0 then readSuccess = true end
-                end
-            end
-        end
-
-        -- ATTEMPT 3: Legacy .getCapacity / .getAmount
-        if not readSuccess then
-            local cap = 0
-            if tank.getCapacity then cap = tank.getCapacity() end
-            
-            local amt = 0
-            if tank.getAmount then amt = tank.getAmount() 
-            elseif tank.getStored then 
-                 local s = tank.getStored()
-                 if type(s) == "table" then amt = s.amount or 0 else amt = s or 0 end
-            end
-            
-            if cap > 0 then 
-                tCap = cap
-                tAmt = amt
-                readSuccess = true 
-            end
-        end
-
-        -- CACHE LOGIC
-        if readSuccess and tCap > 1000 then
-            tankCache[tName] = { cap = tCap, amt = tAmt }
-            tanksFoundCount = tanksFoundCount + 1
-        elseif tankCache[tName] then
-            -- Use cache if read failed
-            tCap = tankCache[tName].cap
-            tAmt = tankCache[tName].amt
-            tanksFoundCount = tanksFoundCount + 1
-        else
-            tCap = 0
-            tAmt = 0
-        end
-
-        currentAmount = currentAmount + tAmt
-        totalMax = totalMax + tCap
-    end
-
-    local displayMax = totalMax
-    if displayMax == 0 then displayMax = 1 end
-
-    -- --- PART 2: VITALS SCANNING ---
-    local vitalsData = {}
-    local alarmTriggered = false
-    
-    for i, d in ipairs(detectors) do
-        local entities = d.scanEntities(4)
-        local alive = false
-        if entities then
-            for _, e in pairs(entities) do
-                if e.name == "Unemployed" or e.name == "Villager" then
-                    alive = true
-                    break
-                end
-            end
-        end
-        if not alive then alarmTriggered = true end
-        table.insert(vitalsData, { id = i, isAlive = alive })
-    end
-
-    redstone.setOutput("back", alarmTriggered)
-
-    -- --- PART 3: DRAWING ---
-    mon.clear()
-    mon.setTextScale(1)
-    
-    mon.setCursorPos(1, 1)
-    mon.setTextColor(colors.red)
-    mon.write("-- BLOOD MONITORING SYSTEM --")
-    
-    if tanksFoundCount > 0 then
-        local percent = (currentAmount / displayMax) * 100
-        local L, V = 12, 10 
+    if #tanks == 0 then
+        -- >>> DIAGNOSTIC MODE <<<
+        drawDebugScreen(debugList)
+    else
+        -- >>> STANDARD MODE <<<
+        -- --- PART 2: VITALS SCANNING ---
+        local vitalsData = {}
+        local alarmTriggered = false
         
+        for i, d in ipairs(detectors) do
+            local entities = d.scanEntities(4)
+            local alive = false
+            if entities then
+                for _, e in pairs(entities) do
+                    if e.name == "Unemployed" or e.name == "Villager" then
+                        alive = true
+                        break
+                    end
+                end
+            end
+            if not alive then alarmTriggered = true end
+            table.insert(vitalsData, { id = i, isAlive = alive })
+        end
+
+        redstone.setOutput("back", alarmTriggered)
+
+        -- --- PART 3: DRAWING ---
+        mon.clear()
+        mon.setTextScale(1)
+        
+        mon.setCursorPos(1, 1)
+        mon.setTextColor(colors.red)
+        mon.write("-- BLOOD MONITORING SYSTEM --")
+        
+        local percent = 0
+        if totalMax > 0 then percent = (currentAmount / totalMax) * 100 end
+        
+        local L, V = 12, 10 
         local amountB = currentAmount / 1000
         local maxB = totalMax / 1000
 
         mon.setCursorPos(3, 3)
-        mon.write(string.format("%-"..L.."s %"..V.."s", "Tanks:", tostring(tanksFoundCount)))
+        mon.write(string.format("%-"..L.."s %"..V.."s", "Tanks:", tostring(#tanks)))
         
         mon.setCursorPos(3, 4)
         mon.write(string.format("%-"..L.."s %"..V.."s B", "Current:", formatNumber(amountB)))
@@ -249,45 +238,38 @@ while true do
         mon.write(string.format("%-"..L.."s %"..V..".1f%%", "Fill:", percent))
         
         drawBar(percent)
-    else
-        mon.setCursorPos(3, 4)
-        mon.setTextColor(colors.red)
-        mon.write("NO TANKS DETECTED")
-        mon.setCursorPos(3, 5)
-        mon.setTextColor(colors.white)
-        mon.write("See Local Term for Info")
-    end
 
-    -- >> Draw Vitals Grid
-    mon.setBackgroundColor(colors.black)
-    mon.setTextColor(colors.yellow)
-    mon.setCursorPos(1, 11) 
-    mon.write(string.rep("-", w))
-    mon.setCursorPos(2, 12)
-    mon.write("POD STATUS:")
+        -- >> Draw Vitals Grid
+        mon.setBackgroundColor(colors.black)
+        mon.setTextColor(colors.yellow)
+        mon.setCursorPos(1, 11) 
+        mon.write(string.rep("-", w))
+        mon.setCursorPos(2, 12)
+        mon.write("POD STATUS:")
 
-    local currentX = 2
-    local currentY = 13
-    
-    for _, v in ipairs(vitalsData) do
-        mon.setCursorPos(currentX, currentY)
-        mon.setTextColor(colors.white)
-        mon.write("V" .. v.id .. ":")
+        local currentX = 2
+        local currentY = 13
         
-        if v.isAlive then
-            mon.setTextColor(colors.green)
-            mon.write("[OK]")
-        else
-            mon.setTextColor(colors.red)
-            mon.write("[DEAD]")
+        for _, v in ipairs(vitalsData) do
+            mon.setCursorPos(currentX, currentY)
+            mon.setTextColor(colors.white)
+            mon.write("V" .. v.id .. ":")
+            
+            if v.isAlive then
+                mon.setTextColor(colors.green)
+                mon.write("[OK]")
+            else
+                mon.setTextColor(colors.red)
+                mon.write("[DEAD]")
+            end
+            
+            currentY = currentY + 1
+            if currentY > h then
+                currentY = 13
+                currentX = currentX + COL_WIDTH
+            end
+            if currentX > w then break end
         end
-        
-        currentY = currentY + 1
-        if currentY > h then
-            currentY = 13
-            currentX = currentX + COL_WIDTH
-        end
-        if currentX > w then break end
     end
 
     sleep(2) 
