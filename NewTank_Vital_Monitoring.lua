@@ -54,15 +54,39 @@ while true do
         print("Error: Tank '"..tankName.."' not found!")
         print("Check your modem connection.")
     else
-        -- Attempt to get data using generic FluidStorage method
-        -- This works for most Mekanism/Storage pipes in modern versions
-        local tanks = tank.getTanks() 
+        -- COMPATIBILITY FIX: Handle different Mekanism versions
+        local amount = 0
+        local capacity = 0
+        local name = "Empty"
+        local hasData = false
+
+        -- Try Modern Method (1.16+)
+        if tank.getTanks then
+            local data = tank.getTanks()
+            if data and data[1] then
+                amount = data[1].amount
+                capacity = data[1].capacity
+                name = data[1].name
+                hasData = true
+            end
+        -- Try Legacy Method (1.12.2 and older)
+        elseif tank.getStored and tank.getCapacity then
+            amount = tank.getStored()
+            capacity = tank.getCapacity()
+            hasData = true
+            name = "Fluid" -- Default if we can't find a name
+            
+            -- Try to find the name using getTankInfo (Legacy)
+            if tank.getTankInfo then
+                local info = tank.getTankInfo()
+                if info and info[1] then
+                    name = info[1].name
+                end
+            end
+        end
         
-        if tanks and tanks[1] then
-            local data = tanks[1]
-            local name = data.name:gsub("minecraft:", ""):gsub("mekanism:", "")
-            local amount = data.amount
-            local capacity = data.capacity
+        if hasData then
+            name = name:gsub("minecraft:", ""):gsub("mekanism:", "")
             local percentage = 0
             
             if capacity > 0 then
