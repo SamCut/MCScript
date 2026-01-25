@@ -93,35 +93,74 @@ while true do
     local totalMax = 0
     
     for _, tank in ipairs(tanks) do
-        -- Try to get detailed tank info
-        local tankInfo = nil
+        local tankInfoFound = false
+        
+        -- Method 1: Generic peripheral.call("tanks") - Standard CC
+        -- This works for most basic mods
         if tank.tanks then 
             local success, data = pcall(tank.tanks)
-            if success and data then tankInfo = data[1] end
+            if success and data and #data > 0 then
+                for _, tInfo in pairs(data) do
+                     currentAmount = currentAmount + (tInfo.amount or 0)
+                     totalMax = totalMax + (tInfo.capacity or FALLBACK_CAPACITY)
+                     tankInfoFound = true
+                end
+            end
         end
 
-        -- 1. Get Amount
-        if tankInfo and tankInfo.amount then
-            currentAmount = currentAmount + tankInfo.amount
+        -- Method 2: Mekanism Specific (getTanks, getTankLevel, getTankCapacity)
+        -- Mekanism valves often don't work with Method 1, so we force this check if Method 1 found nothing.
+        if not tankInfoFound and tank.getTanks then
+            -- Mekanism usually reports the number of internal tanks
+            local success, count = pcall(tank.getTanks)
+            if success and type(count) == "number" and count > 0 then
+                for i = 1, count do
+                     local lvl = 0
+                     if tank.getTankLevel then lvl = tank.getTankLevel(i) end
+                     
+                     local cap = 0
+                     if tank.getTankCapacity then cap = tank.getTankCapacity(i) end
+                     
+                     -- If capacity is 0, it might be an issue, but usually Dynamic Tanks report correctly here
+                     if cap > 0 then
+                        currentAmount = currentAmount + lvl
+                        totalMax = totalMax + cap
+                        tankInfoFound = true
+                     end
+                end
+            end
         end
 
-        -- 2. Get Capacity (Dynamic logic)
-        local thisCap = 0
-        -- Priority 1: Check standard table return
-        if tankInfo and tankInfo.capacity then
-            thisCap = tankInfo.capacity
-        -- Priority 2: Check .getCapacity() (Common Mekanism)
-        elseif tank.getCapacity then
-            thisCap = tank.getCapacity()
-        -- Priority 3: Check .getTankCapacity() (Alternative wrapper method)
-        elseif tank.getTankCapacity then
-            thisCap = tank.getTankCapacity()
-        -- Fallback
-        else
-            thisCap = FALLBACK_CAPACITY
+        -- Method 3: Simple getCapacity/getAmount (Older mods or simple blocks)
+        if not tankInfoFound then
+            local cap = 0
+            if tank.getCapacity then cap = tank.getCapacity() end
+            
+            local amt = 0
+            if tank.getAmount then amt = tank.getAmount() 
+            elseif tank.getStored then 
+                 local s = tank.getStored()
+                 -- Handle if getStored returns a table or number
+                 if type(s) == "table" then amt = s.amount or 0 else amt = s or 0 end
+            end
+            
+            if cap > 0 then
+                totalMax = totalMax + cap
+                currentAmount = currentAmount + amt
+                tankInfoFound = true
+            end
         end
-        
-        totalMax = totalMax + thisCap
+
+        -- Fallback: If we still have no info
+        if not tankInfoFound then
+            -- We ONLY add fallback capacity if it's NOT a Mekanism block.
+            -- Mekanism blocks that fail to read are usually just structural wall blocks
+            -- and adding capacity for them creates "ghost" tanks.
+            local name = peripheral.getName(tank)
+            if not name:find("mekanism") then
+                totalMax = totalMax + FALLBACK_CAPACITY
+            end
+        end
     end
 
     -- Avoid division by zero if no tanks are connected
