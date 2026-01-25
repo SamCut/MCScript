@@ -34,7 +34,7 @@ end
 
 local function drawBar(percent)
     local w, h = mon.getSize()
-    if w < 2 then return end -- Safety for tiny monitors
+    if w < 2 then return end 
 
     local barWidth = w - 2
     local filledWidth = math.floor((percent / 100) * barWidth)
@@ -53,198 +53,178 @@ local function drawBar(percent)
 end
 
 -- =============================================
--- DEBUG / DIAGNOSTIC SCREEN
--- =============================================
-local function drawDebugScreen(candidates)
-    mon.clear()
-    mon.setTextScale(0.5) 
-    mon.setCursorPos(1,1)
-    mon.setTextColor(colors.orange)
-    mon.write("DEBUG MODE - PERIPHERAL LIST")
-    mon.setCursorPos(1,2)
-    mon.setTextColor(colors.white)
-    mon.write("Set DEBUG_MODE=false to hide.")
-    
-    local y = 4
-    if #candidates == 0 then
-        mon.setCursorPos(1, y)
-        mon.setTextColor(colors.red)
-        mon.write("NO PERIPHERALS FOUND!")
-        mon.setCursorPos(1, y+1)
-        mon.write("Check Modem RED light & Cables.")
-    else
-        for _, info in ipairs(candidates) do
-            mon.setCursorPos(1, y)
-            
-            if info.isTank then
-                mon.setTextColor(colors.green)
-            elseif info.name:find("valve") or info.name:find("tank") then
-                 mon.setTextColor(colors.red) 
-            else
-                mon.setTextColor(colors.gray)
-            end
-            
-            local str = string.format("%s | Cap:%s", info.name, info.cap or "?")
-            mon.write(str)
-            
-            y = y + 1
-            if y > 35 then break end 
-        end
-    end
-end
-
--- =============================================
 -- TANK SCANNING LOGIC
 -- =============================================
-local function scanAndReadTanks()
-    local allNames = peripheral.getNames()
-    local validTanks = {} 
-    local debugList = {} 
-    
-    local totalAmt = 0
-    local totalCap = 0
-    
-    for _, name in ipairs(allNames) do
-        -- Simplified filter: Only ignore obvious non-tanks
-        if not name:find("monitor") and 
-           not name:find("detector") and 
-           not name:find("modem") and 
-           name ~= "back" and name ~= "front" and name ~= "top" and name ~= "bottom" then
-            
-            -- SAFE WRAPPING: pcall prevents crashes if peripheral disconnects
-            local pcallSuccess, p = pcall(peripheral.wrap, name)
-            
-            if pcallSuccess and p then
-                local tCap, tAmt = 0, 0
-                local readSuccess = false
-                local pType = "unknown"
-                pcall(function() pType = peripheral.getType(p) end)
+local function findUniqueTanks()
+    local foundTanks = {}
+    local seenNames = {}
 
-                -- METHOD 1: .tanks() (Standard)
-                if not readSuccess and p.tanks then 
-                    local success, data = pcall(p.tanks)
-                    if success and data and #data > 0 then
-                        for _, tInfo in pairs(data) do
-                             tAmt = tAmt + (tInfo.amount or 0)
-                             tCap = tCap + (tInfo.capacity or 0)
-                        end
-                        if tCap > 0 then readSuccess = true end
-                    end
-                end
-
-                -- METHOD 2: .getTanks() (Mekanism v10)
-                if not readSuccess and p.getTanks then
-                    local success, result = pcall(p.getTanks)
-                    if success then
-                        if type(result) == "table" then
-                            for _, tData in pairs(result) do
-                                tAmt = tAmt + (tData.amount or 0)
-                                tCap = tCap + (tData.capacity or 0)
-                            end
-                        elseif type(result) == "number" and result > 0 then
-                            for i = 1, result do
-                                local lvl = 0
-                                if p.getTankLevel then lvl = p.getTankLevel(i) or 0 end
-                                local cap = 0
-                                if p.getTankCapacity then cap = p.getTankCapacity(i) or 0 end
-                                tAmt = tAmt + lvl
-                                tCap = tCap + cap
-                            end
-                        end
-                        if tCap > 0 then readSuccess = true end
-                    end
-                end
-                
-                -- METHOD 3: .getFluid()
-                if not readSuccess and p.getFluid then
-                     local success, info = pcall(p.getFluid)
-                     if success and type(info) == "table" then
-                         tAmt = info.amount or 0
-                         tCap = info.capacity or 0
-                         if tCap > 0 then readSuccess = true end
-                     end
-                end
-
-                -- METHOD 4: .getTankProperties()
-                if not readSuccess and p.getTankProperties then
-                    local success, props = pcall(p.getTankProperties)
-                     if success and type(props) == "table" then
-                         if props[1] then 
-                             for _, prop in pairs(props) do
-                                 local c = prop.contents
-                                 if c then tAmt = tAmt + (c.amount or 0) end
-                                 tCap = tCap + (prop.capacity or 0)
-                             end
-                         else
-                             local c = props.contents
-                             if c then tAmt = c.amount or 0 end
-                             tCap = props.capacity or 0
-                         end
-                         if tCap > 0 then readSuccess = true end
-                     end
-                end
-
-                -- CACHE LOGIC
-                if readSuccess and tCap > 0 then
-                    tankCache[name] = { cap = tCap, amt = tAmt }
-                elseif tankCache[name] then
-                    tCap = tankCache[name].cap
-                    tAmt = tankCache[name].amt
-                    readSuccess = true 
-                end
-
-                table.insert(debugList, {
-                    name = name,
-                    type = pType,
-                    cap = tCap,
-                    isTank = readSuccess
-                })
-
-                if readSuccess and tCap > 0 then
-                    totalAmt = totalAmt + tAmt
-                    totalCap = totalCap + tCap
-                    table.insert(validTanks, p)
-                end
-            end -- end pcall success
+    -- Helper to safely add peripherals by type
+    local function addByType(typeStr)
+        local periphs = { peripheral.find(typeStr) }
+        for _, p in ipairs(periphs) do
+            local name = peripheral.getName(p)
+            if not seenNames[name] then
+                seenNames[name] = true
+                table.insert(foundTanks, p)
+            end
         end
     end
+
+    -- 1. Generic Fluid Storage (Drums, etc)
+    addByType("fluid_storage")
     
-    return validTanks, totalAmt, totalCap, debugList
+    -- 2. Mekanism Dynamic Tanks (The specific type you mentioned)
+    -- This covers "mekanism:dynamic_tank_x"
+    addByType("mekanism:dynamic_tank")
+    
+    -- 3. Valves (Just in case the type differs from the name)
+    addByType("mekanism:dynamic_valve")
+
+    return foundTanks
+end
+
+local function readTankData(tank)
+    local tCap, tAmt = 0, 0
+    local readSuccess = false
+    
+    -- METHOD 1: .tanks() (Modern CC)
+    if not readSuccess and tank.tanks then 
+        local success, data = pcall(tank.tanks)
+        if success and data and #data > 0 then
+            for _, tInfo in pairs(data) do
+                 tAmt = tAmt + (tInfo.amount or 0)
+                 tCap = tCap + (tInfo.capacity or 0)
+            end
+            if tCap > 0 then readSuccess = true end
+        end
+    end
+
+    -- METHOD 2: .getTankInfo() (Standard Mekanism)
+    -- I restored this as it is critical for many Mek versions
+    if not readSuccess and tank.getTankInfo then
+         local success, info = pcall(tank.getTankInfo)
+         if success then
+             -- Sometimes returns a single table, sometimes a list of tables
+             if info.capacity then 
+                 tAmt = info.amount or 0
+                 tCap = info.capacity or 0
+             else
+                 for _, sub in pairs(info) do
+                     tAmt = tAmt + (sub.amount or 0)
+                     tCap = tCap + (sub.capacity or 0)
+                 end
+             end
+             if tCap > 0 then readSuccess = true end
+         end
+    end
+
+    -- METHOD 3: .getTanks() (Mekanism v10+)
+    if not readSuccess and tank.getTanks then
+        local success, result = pcall(tank.getTanks)
+        if success then
+            if type(result) == "table" then
+                for _, tData in pairs(result) do
+                    tAmt = tAmt + (tData.amount or 0)
+                    tCap = tCap + (tData.capacity or 0)
+                end
+            elseif type(result) == "number" and result > 0 then
+                for i = 1, result do
+                    local lvl = 0
+                    if tank.getTankLevel then lvl = tank.getTankLevel(i) or 0 end
+                    local cap = 0
+                    if tank.getTankCapacity then cap = tank.getTankCapacity(i) or 0 end
+                    tAmt = tAmt + lvl
+                    tCap = tCap + cap
+                end
+            end
+            if tCap > 0 then readSuccess = true end
+        end
+    end
+
+    -- METHOD 4: .getFluid() / .getTankProperties() (Legacy/Modded)
+    if not readSuccess then
+        -- try getFluid
+        if tank.getFluid then
+             local success, info = pcall(tank.getFluid)
+             if success and type(info) == "table" then
+                 tAmt = info.amount or 0
+                 tCap = info.capacity or 0
+                 if tCap > 0 then readSuccess = true end
+             end
+        end
+        -- try getTankProperties
+        if not readSuccess and tank.getTankProperties then
+            local success, props = pcall(tank.getTankProperties)
+             if success and type(props) == "table" then
+                 if props[1] then 
+                     for _, prop in pairs(props) do
+                         local c = prop.contents
+                         if c then tAmt = tAmt + (c.amount or 0) end
+                         tCap = tCap + (prop.capacity or 0)
+                     end
+                 else
+                     local c = props.contents
+                     if c then tAmt = c.amount or 0 end
+                     tCap = props.capacity or 0
+                 end
+                 if tCap > 0 then readSuccess = true end
+             end
+        end
+    end
+
+    return readSuccess, tAmt, tCap
 end
 
 -- =============================================
 -- MAIN LOOP
 -- =============================================
-print("System Initializing...")
-mon.clear()
-mon.setCursorPos(1,1)
-mon.write("Initializing...")
+print("Monitor Initialized.")
+print("Scanning for 'mekanism:dynamic_tank'...")
 
 while true do
-    -- Catch-all error handler for the main loop
+    -- Catch-all error handler
     local status, err = pcall(function()
         local w, h = mon.getSize()
         
-        -- Scan
-        local tanks, currentAmount, totalMax, debugList = scanAndReadTanks()
+        -- 1. Find Tanks
+        local tanks = findUniqueTanks()
+        local currentAmount = 0
+        local totalMax = 0
+        local validTankCount = 0
         
-        -- Logic to decide between Debug and Standard screens
-        local showDebug = false
-        if DEBUG_MODE then showDebug = true end
-        if #tanks == 0 then showDebug = true end
+        -- 2. Read Data & Cache
+        for _, tank in ipairs(tanks) do
+            local name = peripheral.getName(tank)
+            local success, amt, cap = readTankData(tank)
+            
+            if success and cap > 0 then
+                -- Valid read: update cache and totals
+                tankCache[name] = { amt = amt, cap = cap }
+                currentAmount = currentAmount + amt
+                totalMax = totalMax + cap
+                validTankCount = validTankCount + 1
+            elseif tankCache[name] then
+                -- Invalid read (flicker): use cache
+                currentAmount = currentAmount + tankCache[name].amt
+                totalMax = totalMax + tankCache[name].cap
+                validTankCount = validTankCount + 1
+            end
+        end
+
+        -- 3. Draw Monitor
+        mon.clear()
+        mon.setTextScale(1)
         
-        if showDebug then
-             drawDebugScreen(debugList)
-             -- Print to terminal so user knows it's working
-             term.clear()
-             term.setCursorPos(1,1)
-             print("Status: DEBUG MODE (No tanks or forced)")
-             print("Tanks Found: " .. #tanks)
+        if DEBUG_MODE and validTankCount == 0 then
+            mon.setCursorPos(1,1)
+            mon.write("DEBUG: No Tanks Reading")
+            mon.setCursorPos(1,2)
+            mon.write("Found Peripherals: " .. #tanks)
         else
-            -- >>> STANDARD MODE <<<
+            -- Vitals Scan
             local vitalsData = {}
             local alarmTriggered = false
-            
             for i, d in ipairs(detectors) do
                 local entities = d.scanEntities(4)
                 local alive = false
@@ -259,13 +239,9 @@ while true do
                 if not alive then alarmTriggered = true end
                 table.insert(vitalsData, { id = i, isAlive = alive })
             end
-
             redstone.setOutput("back", alarmTriggered)
 
-            -- DRAWING
-            mon.clear()
-            mon.setTextScale(1)
-            
+            -- Header
             mon.setCursorPos(1, 1)
             mon.setTextColor(colors.red)
             mon.write("-- BLOOD MONITORING SYSTEM --")
@@ -278,7 +254,8 @@ while true do
             local maxB = totalMax / 1000
 
             mon.setCursorPos(3, 3)
-            mon.write(string.format("%-"..L.."s %"..V.."s", "Tanks:", tostring(#tanks)))
+            mon.setTextColor(colors.white)
+            mon.write(string.format("%-"..L.."s %"..V.."s", "Tanks:", tostring(validTankCount)))
             
             mon.setCursorPos(3, 4)
             mon.write(string.format("%-"..L.."s %"..V.."s B", "Current:", formatNumber(amountB)))
@@ -291,7 +268,7 @@ while true do
             
             drawBar(percent)
 
-            -- Vitals Grid
+            -- Pod Status
             mon.setBackgroundColor(colors.black)
             mon.setTextColor(colors.yellow)
             mon.setCursorPos(1, 11) 
@@ -322,23 +299,20 @@ while true do
                 end
                 if currentX > w then break end
             end
-            
-            -- Print to terminal
-            term.clear()
-            term.setCursorPos(1,1)
-            print("Status: RUNNING")
-            print("Tanks: " .. #tanks)
-            print("Current: " .. math.floor(amountB) .. " B")
         end
-    end) -- End pcall
+        
+        -- Terminal Status
+        term.clear()
+        term.setCursorPos(1,1)
+        print("Status: RUNNING")
+        print("Tanks Found: " .. #tanks)
+        print("Valid Reads: " .. validTankCount)
+        print("Total: " .. formatNumber(currentAmount/1000) .. " B")
+
+    end) 
 
     if not status then
-        print("CRASH ERROR: " .. tostring(err))
-        mon.clear()
-        mon.setCursorPos(1,1)
-        mon.write("SCRIPT CRASHED!")
-        mon.setCursorPos(1,2)
-        mon.write("See Terminal.")
+        print("Error: " .. tostring(err))
     end
 
     sleep(2) 
