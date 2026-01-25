@@ -1,6 +1,9 @@
 -- =============================================
 -- CONFIGURATION
 -- =============================================
+-- SET THIS TO FALSE WHEN EVERYTHING IS WORKING
+local DEBUG_MODE = true 
+
 local VITALS_START_Y = 11 
 local COL_WIDTH = 14 
 
@@ -44,16 +47,15 @@ end
 -- =============================================
 -- DEBUG / DIAGNOSTIC SCREEN
 -- =============================================
--- Draws a raw list of what the computer actually sees
 local function drawDebugScreen(candidates)
     mon.clear()
-    mon.setTextScale(0.5) -- Small text to fit more info
+    mon.setTextScale(0.5) 
     mon.setCursorPos(1,1)
     mon.setTextColor(colors.orange)
-    mon.write("DIAGNOSTIC MODE - NO VALID TANKS")
+    mon.write("DEBUG MODE - PERIPHERAL LIST")
     mon.setCursorPos(1,2)
     mon.setTextColor(colors.white)
-    mon.write("Checking connections...")
+    mon.write("Set DEBUG_MODE=false to hide.")
     
     local y = 4
     if #candidates == 0 then
@@ -61,22 +63,32 @@ local function drawDebugScreen(candidates)
         mon.setTextColor(colors.red)
         mon.write("NO PERIPHERALS FOUND!")
         mon.setCursorPos(1, y+1)
-        mon.write("Check Wired Modems (Must be RED)")
+        mon.write("1. Check Wired Modem is RED.")
+        mon.setCursorPos(1, y+2)
+        mon.write("2. Check Network Cable connection.")
     else
         for _, info in ipairs(candidates) do
             mon.setCursorPos(1, y)
+            
+            -- Color code: Green=Ready, Gray=Not Tank, Red=Zero Cap Tank
             if info.isTank then
                 mon.setTextColor(colors.green)
+            elseif info.name:find("valve") or info.name:find("tank") then
+                 mon.setTextColor(colors.red) -- Should be a tank but isn't reading
             else
                 mon.setTextColor(colors.gray)
             end
             
-            -- Format: "name | type | Cap: 1000"
-            local str = string.format("%s | %s | Cap:%s", info.name, info.type, info.cap or "?")
+            -- Format: "name | Cap: 1000"
+            local str = string.format("%s | Cap:%s", info.name, info.cap or "?")
             mon.write(str)
             
             y = y + 1
-            if y > 30 then break end -- Stop if screen full
+            if y > 35 then 
+                mon.setCursorPos(1, y)
+                mon.write("... more items hidden ...")
+                break 
+            end 
         end
     end
 end
@@ -86,14 +98,13 @@ end
 -- =============================================
 local function scanAndReadTanks()
     local allNames = peripheral.getNames()
-    local validTanks = {} -- Tanks that have fluid data
-    local debugList = {}  -- Everything we found (for debug screen)
+    local validTanks = {} 
+    local debugList = {} 
     
     local totalAmt = 0
     local totalCap = 0
     
     for _, name in ipairs(allNames) do
-        -- Skip standard non-tank peripherals to clean up debug list
         if not name:find("monitor") and 
            not name:find("detector") and 
            not name:find("modem") and 
@@ -104,7 +115,7 @@ local function scanAndReadTanks()
             local tCap, tAmt = 0, 0
             local readSuccess = false
 
-            -- ATTEMPT 1: Standard .tanks()
+            -- METHOD 1: .tanks() (Standard)
             if not readSuccess and p.tanks then 
                 local success, data = pcall(p.tanks)
                 if success and data and #data > 0 then
@@ -112,11 +123,11 @@ local function scanAndReadTanks()
                          tAmt = tAmt + (tInfo.amount or 0)
                          tCap = tCap + (tInfo.capacity or 0)
                     end
-                    readSuccess = true
+                    if tCap > 0 then readSuccess = true end
                 end
             end
 
-            -- ATTEMPT 2: Mekanism .getTanks()
+            -- METHOD 2: .getTanks() (Mekanism v10)
             if not readSuccess and p.getTanks then
                 local success, result = pcall(p.getTanks)
                 if success then
@@ -125,7 +136,6 @@ local function scanAndReadTanks()
                             tAmt = tAmt + (tData.amount or 0)
                             tCap = tCap + (tData.capacity or 0)
                         end
-                        readSuccess = true
                     elseif type(result) == "number" and result > 0 then
                         for i = 1, result do
                             local lvl = 0
@@ -135,22 +145,39 @@ local function scanAndReadTanks()
                             tAmt = tAmt + lvl
                             tCap = tCap + cap
                         end
-                        readSuccess = true
                     end
+                    if tCap > 0 then readSuccess = true end
                 end
             end
             
-            -- ATTEMPT 3: getFluidTankProperties (Older versions)
-            if not readSuccess and p.getFluidTankProperties then
-                local success, props = pcall(p.getFluidTankProperties)
-                if success and type(props) == "table" then
-                    for _, prop in pairs(props) do
-                        local contents = prop.contents
-                        if contents then tAmt = tAmt + (contents.amount or 0) end
-                        tCap = tCap + (prop.capacity or 0)
-                    end
-                    readSuccess = true
-                end
+            -- METHOD 3: .getFluid() (Older/Modded)
+            if not readSuccess and p.getFluid then
+                 local success, info = pcall(p.getFluid)
+                 if success and type(info) == "table" then
+                     tAmt = info.amount or 0
+                     tCap = info.capacity or 0
+                     if tCap > 0 then readSuccess = true end
+                 end
+            end
+
+            -- METHOD 4: .getTankProperties()
+            if not readSuccess and p.getTankProperties then
+                local success, props = pcall(p.getTankProperties)
+                 if success and type(props) == "table" then
+                     -- Sometimes returns table of properties, sometimes one object
+                     if props[1] then 
+                         for _, prop in pairs(props) do
+                             local c = prop.contents
+                             if c then tAmt = tAmt + (c.amount or 0) end
+                             tCap = tCap + (prop.capacity or 0)
+                         end
+                     else
+                         local c = props.contents
+                         if c then tAmt = c.amount or 0 end
+                         tCap = props.capacity or 0
+                     end
+                     if tCap > 0 then readSuccess = true end
+                 end
             end
 
             -- Store info for Debug Screen
@@ -181,11 +208,10 @@ print("Monitor running...")
 while true do
     local w, h = mon.getSize()
     
-    -- Scan everything
     local tanks, currentAmount, totalMax, debugList = scanAndReadTanks()
     
-    if #tanks == 0 then
-        -- >>> DIAGNOSTIC MODE <<<
+    -- FORCE DEBUG MODE if enabled OR if no tanks found
+    if DEBUG_MODE or #tanks == 0 then
         drawDebugScreen(debugList)
     else
         -- >>> STANDARD MODE <<<
