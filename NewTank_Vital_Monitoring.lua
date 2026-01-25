@@ -24,40 +24,56 @@ end)
 -- =============================================
 -- STATE MANAGEMENT (CACHING)
 -- =============================================
--- We store the last valid read here to prevent flickering if a read fails briefly
 local tankCache = {} 
 
 -- =============================================
 -- HELPER FUNCTIONS
 -- =============================================
 
--- Find unique tanks, prioritizing Valves
-local function findUniqueTanks()
-    local foundTanks = {}
-    local seenNames = {}
-
-    local function addTanks(typeStr)
-        local periphs = { peripheral.find(typeStr) }
-        for _, p in ipairs(periphs) do
-            local name = peripheral.getName(p)
-            -- Deduplication: Only add if we haven't seen this name
-            if not seenNames[name] then
-                -- Filter: Explicitly ignore "dynamic_tank" (structural blocks)
-                -- We only want "valve" or generic storage
-                if not name:find("dynamic_tank") then
-                    seenNames[name] = true
-                    table.insert(foundTanks, p)
+-- NEW: Universal Scanner
+-- Scans ALL connected peripherals and checks if they have tank functions
+local function scanForTanks()
+    local candidates = {}
+    local allPeripherals = peripheral.getNames()
+    
+    -- Debug: Print what we see to local console
+    term.clear()
+    term.setCursorPos(1,1)
+    print("--- DIAGNOSTIC MODE ---")
+    print("Connected Peripherals:")
+    
+    for _, name in ipairs(allPeripherals) do
+        -- Skip known non-tanks to save processing
+        if name ~= "back" and name ~= "front" and name ~= "top" and 
+           not name:find("monitor") and 
+           not name:find("detector") and 
+           not name:find("modem") then
+            
+            local p = peripheral.wrap(name)
+            if p then
+                -- DUCK TYPING: If it walks like a tank, it's a tank.
+                -- Check if it has ANY common fluid methods
+                if p.tanks or p.getTanks or p.getTankLevel or p.getTankInfo or p.getFluid or p.getCapacity then
+                    table.insert(candidates, p)
+                    print(" [TANK] " .. name) -- Mark as valid tank
+                else
+                    print(" [OTHER] " .. name) -- Connected, but not a tank
                 end
+            end
+        else
+            -- Print excluded peripherals just so user knows they are seen
+            if not name:find("modem") then -- modems spam the list
+                 print(" [SYS] " .. name)
             end
         end
     end
-
-    -- 1. Look for Generic Fluid Storage (often wraps valves correctly)
-    addTanks("fluid_storage")
-    -- 2. Look specifically for Mekanism Valves (if generic missed them)
-    addTanks("mekanism:dynamic_valve") 
     
-    return foundTanks
+    if #candidates == 0 then
+        print("\nWARNING: No tank-like peripherals found!")
+        print("Ensure modems on Valves are RED.")
+    end
+    
+    return candidates
 end
 
 local function formatNumber(n)
@@ -86,14 +102,15 @@ end
 -- =============================================
 -- MAIN LOOP
 -- =============================================
-print("Blood Monitor Running...")
-print("System Stabilized.")
+print("\nStarting Monitor Loop...")
 
 while true do
     local w, h = mon.getSize()
 
     -- --- PART 1: FLUID LOGIC ---
-    local tanks = findUniqueTanks()
+    -- Using the new scanner
+    local tanks = scanForTanks()
+    
     local currentAmount = 0
     local totalMax = 0
     local tanksFoundCount = 0
@@ -162,18 +179,16 @@ while true do
             end
         end
 
-        -- CACHE LOGIC (Fixes Fluctuation)
+        -- CACHE LOGIC
         if readSuccess and tCap > 1000 then
-            -- If read was good and capacity is realistic (> 1 bucket), update cache
             tankCache[tName] = { cap = tCap, amt = tAmt }
             tanksFoundCount = tanksFoundCount + 1
         elseif tankCache[tName] then
-            -- If read failed (or returned 0), use last known good value
+            -- Use cache if read failed
             tCap = tankCache[tName].cap
             tAmt = tankCache[tName].amt
             tanksFoundCount = tanksFoundCount + 1
         else
-            -- If no cache and read failed, ignore this tank
             tCap = 0
             tAmt = 0
         end
@@ -182,7 +197,6 @@ while true do
         totalMax = totalMax + tCap
     end
 
-    -- Safety: Prevent Div/0
     local displayMax = totalMax
     if displayMax == 0 then displayMax = 1 end
 
@@ -219,7 +233,6 @@ while true do
         local percent = (currentAmount / displayMax) * 100
         local L, V = 12, 10 
         
-        -- Convert to Buckets (B)
         local amountB = currentAmount / 1000
         local maxB = totalMax / 1000
 
@@ -242,7 +255,7 @@ while true do
         mon.write("NO TANKS DETECTED")
         mon.setCursorPos(3, 5)
         mon.setTextColor(colors.white)
-        mon.write("Check Valve Modems")
+        mon.write("See Local Term for Info")
     end
 
     -- >> Draw Vitals Grid
