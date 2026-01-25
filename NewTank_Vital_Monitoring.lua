@@ -51,6 +51,11 @@ local function findUniqueTanks()
     return foundTanks
 end
 
+local function formatNumber(n)
+    -- Formats a number with commas (e.g., 10000 -> 10,000)
+    return tostring(math.floor(n)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+end
+
 local function drawBar(percent)
     local w, h = mon.getSize()
     local barWidth = w - 2
@@ -154,18 +159,22 @@ while true do
     
     if #tanks > 0 then
         local percent = (currentAmount / totalMax) * 100
-        local L, V = 15, 7 -- Layout spacing
+        -- Increased V from 7 to 10 to handle large Dynamic Tank numbers
+        local L, V = 12, 10 
         
-        -- Formatting helper to handle MegaBuckets (divide by 1000 for buckets)
-        local amountB = math.floor(currentAmount / 1000)
-        local maxB = math.floor(totalMax / 1000)
+        -- Formatting helper to handle Buckets (divide by 1000)
+        local amountB = currentAmount / 1000
+        local maxB = totalMax / 1000
 
         mon.setCursorPos(3, 3)
-        mon.write(string.format("%-"..L.."s %"..V.."d", "Tanks:", #tanks))
+        mon.write(string.format("%-"..L.."s %"..V.."s", "Tanks:", tostring(#tanks)))
+        
         mon.setCursorPos(3, 4)
-        mon.write(string.format("%-"..L.."s %"..V.."d B", "Current:", amountB))
+        mon.write(string.format("%-"..L.."s %"..V.."s B", "Current:", formatNumber(amountB)))
+        
         mon.setCursorPos(3, 5)
-        mon.write(string.format("%-"..L.."s %"..V.."d B", "Max Cap:", maxB))
+        mon.write(string.format("%-"..L.."s %"..V.."s B", "Max Cap:", formatNumber(maxB)))
+        
         mon.setCursorPos(3, 6)
         mon.write(string.format("%-"..L.."s %"..V..".1f%%", "Fill:", percent))
         
