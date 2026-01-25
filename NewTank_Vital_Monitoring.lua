@@ -82,56 +82,96 @@ end
 -- =============================================
 -- MAIN LOOP
 -- =============================================
+print("Starting Blood Monitor...")
+print("Check this screen for debug info if Monitor is empty.")
+
 while true do
     local w, h = mon.getSize()
 
     -- --- PART 1: FLUID LOGIC ---
-    -- We scan for tanks every loop in case you break/place blocks
     local tanks = findUniqueTanks()
     
     local currentAmount = 0
     local totalMax = 0
     
+    -- Clear local console every loop to keep debug clean
+    term.clear()
+    term.setCursorPos(1,1)
+    print("--- DEBUG LOG ---")
+    print("Tanks Found: " .. #tanks)
+
     for _, tank in ipairs(tanks) do
         local tankInfoFound = false
+        local tName = peripheral.getName(tank)
+        local tCap, tAmt = 0, 0
         
         -- Method 1: Generic peripheral.call("tanks") - Standard CC
-        -- This works for most basic mods
-        if tank.tanks then 
+        if not tankInfoFound and tank.tanks then 
             local success, data = pcall(tank.tanks)
             if success and data and #data > 0 then
                 for _, tInfo in pairs(data) do
-                     currentAmount = currentAmount + (tInfo.amount or 0)
-                     totalMax = totalMax + (tInfo.capacity or FALLBACK_CAPACITY)
-                     tankInfoFound = true
+                     tAmt = tAmt + (tInfo.amount or 0)
+                     tCap = tCap + (tInfo.capacity or FALLBACK_CAPACITY)
                 end
+                tankInfoFound = true
+                print(tName .. ": Used .tanks()")
             end
         end
 
-        -- Method 2: Mekanism Specific (getTanks, getTankLevel, getTankCapacity)
-        -- Mekanism valves often don't work with Method 1, so we force this check if Method 1 found nothing.
+        -- Method 2: getTanks() returning TABLE or COUNT
         if not tankInfoFound and tank.getTanks then
-            -- Mekanism usually reports the number of internal tanks
-            local success, count = pcall(tank.getTanks)
-            if success and type(count) == "number" and count > 0 then
-                for i = 1, count do
-                     local lvl = 0
-                     if tank.getTankLevel then lvl = tank.getTankLevel(i) end
-                     
-                     local cap = 0
-                     if tank.getTankCapacity then cap = tank.getTankCapacity(i) end
-                     
-                     -- If capacity is 0, it might be an issue, but usually Dynamic Tanks report correctly here
-                     if cap > 0 then
-                        currentAmount = currentAmount + lvl
-                        totalMax = totalMax + cap
-                        tankInfoFound = true
-                     end
+            local success, result = pcall(tank.getTanks)
+            if success then
+                if type(result) == "table" then
+                    -- List of tank data
+                    for _, tData in pairs(result) do
+                        tAmt = tAmt + (tData.amount or 0)
+                        tCap = tCap + (tData.capacity or 0)
+                    end
+                    tankInfoFound = true
+                    print(tName .. ": Used .getTanks() (Table)")
+                elseif type(result) == "number" and result > 0 then
+                    -- Count (Mekanism style)
+                    for i = 1, result do
+                        local lvl = 0
+                        if tank.getTankLevel then lvl = tank.getTankLevel(i) or 0 end
+                        
+                        local cap = 0
+                        if tank.getTankCapacity then cap = tank.getTankCapacity(i) or 0 end
+                        
+                        if cap > 0 then
+                           tAmt = tAmt + lvl
+                           tCap = tCap + cap
+                           tankInfoFound = true
+                        end
+                    end
+                    if tankInfoFound then print(tName .. ": Used .getTanks() (Count)") end
                 end
             end
         end
 
-        -- Method 3: Simple getCapacity/getAmount (Older mods or simple blocks)
+        -- Method 3: Legacy Mekanism (.getTankInfo)
+        if not tankInfoFound and tank.getTankInfo then
+             local success, info = pcall(tank.getTankInfo)
+             if success and type(info) == "table" then
+                 if info.capacity then -- Single table
+                     tCap = tCap + info.capacity
+                     tAmt = tAmt + (info.amount or 0)
+                     tankInfoFound = true
+                 else -- List of tables
+                     for _, sub in pairs(info) do
+                         if sub.capacity then
+                             tCap = tCap + sub.capacity
+                             tAmt = tAmt + (sub.amount or 0)
+                             tankInfoFound = true
+                         end
+                     end
+                 end
+                 if tankInfoFound then print(tName .. ": Used .getTankInfo") end
+             end
+        end
+
+        -- Method 4: Simple getCapacity/getAmount (Last Resort)
         if not tankInfoFound then
             local cap = 0
             if tank.getCapacity then cap = tank.getCapacity() end
@@ -140,27 +180,29 @@ while true do
             if tank.getAmount then amt = tank.getAmount() 
             elseif tank.getStored then 
                  local s = tank.getStored()
-                 -- Handle if getStored returns a table or number
                  if type(s) == "table" then amt = s.amount or 0 else amt = s or 0 end
             end
             
             if cap > 0 then
-                totalMax = totalMax + cap
-                currentAmount = currentAmount + amt
+                tCap = tCap + cap
+                tAmt = tAmt + amt
                 tankInfoFound = true
+                print(tName .. ": Used .getCapacity/Amount")
             end
         end
 
-        -- Fallback: If we still have no info
+        -- Fallback: If logic failed completely, do we add dummy data?
         if not tankInfoFound then
-            -- We ONLY add fallback capacity if it's NOT a Mekanism block.
-            -- Mekanism blocks that fail to read are usually just structural wall blocks
-            -- and adding capacity for them creates "ghost" tanks.
-            local name = peripheral.getName(tank)
-            if not name:find("mekanism") then
-                totalMax = totalMax + FALLBACK_CAPACITY
+            if not tName:find("mekanism") then
+                tCap = tCap + FALLBACK_CAPACITY
+                print(tName .. ": Fallback Used")
+            else
+                print(tName .. ": SKIPPED (No readable data)")
             end
         end
+        
+        currentAmount = currentAmount + tAmt
+        totalMax = totalMax + tCap
     end
 
     -- Avoid division by zero if no tanks are connected
