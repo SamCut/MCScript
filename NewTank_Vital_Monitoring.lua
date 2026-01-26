@@ -17,9 +17,9 @@ end
 
 local function findPeripheral()
     local names = peripheral.getNames()
-    -- STRICT SEARCH: Only look for "valve" to ensure we ignore the tank casing
+    -- STRICT SEARCH: Look for "dynamicValve" (case-sensitive) as specified
     for _, name in ipairs(names) do
-        if name:find("valve") then
+        if name:find("dynamicValve") then
             return name
         end
     end
@@ -80,8 +80,9 @@ print("Initializing Monitor (Strict Valve Mode)...")
 local pName = findPeripheral()
 
 if not pName then
-    print("Error: No 'valve' peripheral found.")
-    print("Please ensure the modem is on the VALVE block.")
+    print("Error: No 'dynamicValve' peripheral found.")
+    print("Check modem is on the VALVE block.")
+    print("Found: " .. textutils.serialize(peripheral.getNames()))
     return
 end
 
