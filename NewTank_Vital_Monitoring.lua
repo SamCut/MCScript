@@ -1,10 +1,9 @@
 -- Dynamic Tank Monitor
--- Uses specific valve methods: getStored() and getTankCapacity()
+-- STRICT MODE: Uses ONLY getStored() and getTankCapacity()
 
-local tankName = "dynamic_valve_0" -- Default, will auto-detect if not found
+local tankName = "dynamic_valve_0" -- Default
 local monitorSide = nil -- Change to "top", "left", etc. if using an external monitor
 
--- Utilities
 local function formatNum(n)
     if not n then return "0" end
     return tostring(n):reverse():gsub("(%d%d%d)","%1,"):reverse():gsub("^,","")
@@ -34,51 +33,40 @@ end
 
 local function getTankData(p)
     local data = { 
-        name = "Fluid", 
+        name = "Unknown", 
         amount = 0, 
         capacity = 0 
     }
     
-    -- 1. Get Stored Amount (Primary Method)
+    -- 1. Get Stored Data
+    -- User confirmed getStored() returns {name="...", amount=...}
     if p.getStored then
         local ok, res = pcall(p.getStored)
-        if ok then
-            if type(res) == "number" then
-                data.amount = res
-            elseif type(res) == "table" then
-                -- Handle table return per user feedback: {name="...", amount=...}
-                if res.amount then data.amount = res.amount end
-                if res.name then data.name = res.name end
-            end
+        if ok and type(res) == "table" then
+            if res.amount then data.amount = res.amount end
+            if res.name then data.name = res.name end
+        elseif ok and type(res) == "number" then
+            -- Just in case it returns a plain number
+            data.amount = res
+        else
+            -- Debug output if it fails
+            data.debug_stored_err = tostring(res)
         end
+    else
+        data.debug_stored_err = "Method missing"
     end
 
-    -- 2. Get Capacity (Primary Method)
-    -- Prioritizing getTankCapacity as requested
+    -- 2. Get Capacity
+    -- User confirmed getTankCapacity() exists and has value
     if p.getTankCapacity then
         local ok, res = pcall(p.getTankCapacity)
         if ok and type(res) == "number" then
             data.capacity = res
+        else
+            data.debug_cap_err = tostring(res)
         end
-    elseif p.getCapacity then 
-        -- Fallback only if getTankCapacity is missing
-        local ok, res = pcall(p.getCapacity)
-        if ok and type(res) == "number" then
-            data.capacity = res
-        end
-    end
-
-    -- 3. Get Fluid Name (Metadata)
-    -- Only fetch if we didn't get it from getStored
-    if data.name == "Fluid" and p.getTankInfo then
-        local ok, info = pcall(p.getTankInfo)
-        if ok and type(info) == "table" and info[1] then
-            if info[1].name then 
-                data.name = info[1].name 
-            elseif info[1].rawName then
-                data.name = info[1].rawName
-            end
-        end
+    else
+        data.debug_cap_err = "Method missing"
     end
 
     return data
@@ -86,12 +74,11 @@ end
 
 -- Setup
 clear(output)
-print("Initializing Monitor...")
+print("Initializing Monitor (Strict Mode)...")
 local pName = findPeripheral()
 
 if not pName then
     print("Error: No tank/valve found.")
-    print("Please connect a modem to the Valve.")
     return
 end
 
@@ -116,11 +103,26 @@ while true do
     output.setCursorPos(1, 5)
     output.write("Max:   " .. formatNum(data.capacity) .. " mB")
 
+    -- Debug info if methods failed
+    if data.debug_stored_err or data.debug_cap_err then
+        output.setTextColor(colors.red)
+        output.setCursorPos(1, 10)
+        output.write("DEBUG ERRORS:")
+        if data.debug_stored_err then
+            output.setCursorPos(1, 11)
+            output.write("getStored: " .. data.debug_stored_err)
+        end
+        if data.debug_cap_err then
+            output.setCursorPos(1, 12)
+            output.write("getCap: " .. data.debug_cap_err)
+        end
+        output.setTextColor(colors.white)
+    end
+
     -- Progress Bar
     local w, h = output.getSize()
     if data.capacity > 0 then
         local pct = data.amount / data.capacity
-        -- Clamp percentage to 0-1 range to prevent errors
         if pct > 1 then pct = 1 end
         if pct < 0 then pct = 0 end
         
@@ -138,9 +140,6 @@ while true do
         output.write(string.rep("-", barLen - fillLen))
         if output.setTextColor then output.setTextColor(colors.white) end
         output.write("]")
-    else
-        output.setCursorPos(1, 7)
-        output.write("Status: Capacity Unknown")
     end
 
     sleep(0.5)
