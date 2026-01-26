@@ -4,8 +4,8 @@
 local CAPACITY_PER_TANK = 16000
 -- Where the vital list starts (Row 10 gives space for the blood UI)
 local VITALS_START_Y = 11 
--- How wide each villager column is (e.g., "V1: [ALIVE]" is ~12 chars)
-local COL_WIDTH = 14 
+-- How wide each villager column is (e.g., "V1:OK" is ~6 chars, so 8 is safe)
+local COL_WIDTH = 8
 
 -- =============================================
 -- PERIPHERAL SETUP
@@ -194,17 +194,17 @@ while true do
     for _, v in ipairs(vitalsData) do
         mon.setCursorPos(currentX, currentY)
         
-        -- Label: "V1:", "V2:", etc.
+        -- Compact Label: "V1"
         mon.setTextColor(colors.white)
-        mon.write("V" .. v.id .. ":")
+        mon.write("V" .. v.id)
         
-        -- Status: [OK] or [DEAD]
+        -- Compact Status: ":OK" or ":XX"
         if v.isAlive then
             mon.setTextColor(colors.green)
-            mon.write("[OK]")
+            mon.write(":OK")
         else
             mon.setTextColor(colors.red)
-            mon.write("[DEAD]")
+            mon.write(":XX")
         end
         
         -- Move Cursor Logic
