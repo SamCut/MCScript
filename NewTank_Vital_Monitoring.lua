@@ -1,5 +1,6 @@
 -- Dynamic Tank Monitor
 -- STRICT MODE: Uses ONLY getStored() and getTankCapacity()
+-- TARGET: VALVES ONLY (Ignores Tank/Casing blocks)
 
 local tankName = "dynamic_valve_0" -- Default
 local monitorSide = nil -- Change to "top", "left", etc. if using an external monitor
@@ -16,8 +17,9 @@ end
 
 local function findPeripheral()
     local names = peripheral.getNames()
+    -- STRICT SEARCH: Only look for "valve" to ensure we ignore the tank casing
     for _, name in ipairs(names) do
-        if name:find("valve") or name:find("dynamic") or name:find("tank") then
+        if name:find("valve") then
             return name
         end
     end
@@ -74,11 +76,12 @@ end
 
 -- Setup
 clear(output)
-print("Initializing Monitor (Strict Mode)...")
+print("Initializing Monitor (Strict Valve Mode)...")
 local pName = findPeripheral()
 
 if not pName then
-    print("Error: No tank/valve found.")
+    print("Error: No 'valve' peripheral found.")
+    print("Please ensure the modem is on the VALVE block.")
     return
 end
 
