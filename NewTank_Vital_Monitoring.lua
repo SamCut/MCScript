@@ -42,8 +42,14 @@ local function getTankData(p)
     -- 1. Get Stored Amount (Primary Method)
     if p.getStored then
         local ok, res = pcall(p.getStored)
-        if ok and type(res) == "number" then
-            data.amount = res
+        if ok then
+            if type(res) == "number" then
+                data.amount = res
+            elseif type(res) == "table" then
+                -- Handle table return per user feedback: {name="...", amount=...}
+                if res.amount then data.amount = res.amount end
+                if res.name then data.name = res.name end
+            end
         end
     end
 
@@ -63,9 +69,8 @@ local function getTankData(p)
     end
 
     -- 3. Get Fluid Name (Metadata)
-    -- getStored usually returns just a number, so we peek at getTankInfo
-    -- ONLY to get the name string, without overwriting the numbers.
-    if p.getTankInfo then
+    -- Only fetch if we didn't get it from getStored
+    if data.name == "Fluid" and p.getTankInfo then
         local ok, info = pcall(p.getTankInfo)
         if ok and type(info) == "table" and info[1] then
             if info[1].name then 
