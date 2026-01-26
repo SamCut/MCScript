@@ -1,21 +1,30 @@
--- Dynamic Tank Monitor (Multi-Tank Edition)
--- STRICT MODE: Uses ONLY getStored() and getTankCapacity()
--- TARGET: ALL CONNECTED "dynamicValve" PERIPHERALS
--- Aggregates data from multiple tanks into a single total.
+-- =============================================
+-- CONFIGURATION
+-- =============================================
+local CAPACITY_PER_TANK = 16000
+-- Where the vital list starts (Row 10 gives space for the blood UI)
+local VITALS_START_Y = 11 
+-- How wide each villager column is (e.g., "V1: [ALIVE]" is ~12 chars)
+local COL_WIDTH = 14 
 
-local monitorSide = nil -- Change to "top", "left", etc. if using an external monitor
+-- =============================================
+-- PERIPHERAL SETUP
+-- =============================================
+local mon = peripheral.find("monitor")
+local detectors = { peripheral.find("environment_detector") }
 
-local function formatNum(n)
-    if not n then return "0" end
-    return tostring(n):reverse():gsub("(%d%d%d)","%1,"):reverse():gsub("^,","")
-end
+if not mon then error("Error: Monitor not found!") end
 
-local function clear(out)
-    out.clear()
-    out.setCursorPos(1,1)
-end
+-- Sort detectors by name to ensure "Villager 1" stays at position 1
+table.sort(detectors, function(a, b) 
+    return peripheral.getName(a) < peripheral.getName(b) 
+end)
 
--- Find ALL valves, not just one
+-- =============================================
+-- HELPER FUNCTIONS
+-- =============================================
+
+-- 1. Helper for Dynamic Valves (From dynamic_tank_reader.lua)
 local function findAllValves()
     local names = peripheral.getNames()
     local valves = {}
@@ -28,32 +37,21 @@ local function findAllValves()
     return valves
 end
 
--- Main Logic
-local output = term.current()
-if monitorSide and peripheral.isPresent(monitorSide) then
-    output = peripheral.wrap(monitorSide)
-    output.setTextScale(1)
-end
-
+-- 2. Helper to get data from a single valve
 local function getTankData(p)
-    local data = { 
-        name = "Unknown", 
-        amount = 0, 
-        capacity = 0 
-    }
+    local data = { amount = 0, capacity = 0 }
     
-    -- 1. Get Stored Data
+    -- Get Stored Amount
     if p.getStored then
         local ok, res = pcall(p.getStored)
-        if ok and type(res) == "table" then
-            if res.amount then data.amount = res.amount end
-            if res.name then data.name = res.name end
+        if ok and type(res) == "table" and res.amount then
+            data.amount = res.amount
         elseif ok and type(res) == "number" then
             data.amount = res
         end
     end
 
-    -- 2. Get Capacity
+    -- Get Capacity
     if p.getTankCapacity then
         local ok, res = pcall(p.getTankCapacity)
         if ok and type(res) == "number" then
@@ -64,92 +62,163 @@ local function getTankData(p)
     return data
 end
 
--- Setup
-clear(output)
-print("Initializing Monitor (Multi-Tank Mode)...")
-
-local valveNames = findAllValves()
-if #valveNames == 0 then
-    print("Error: No 'dynamicValve' peripherals found.")
-    print("Check modems are on the VALVE blocks.")
-    print("Found: " .. textutils.serialize(peripheral.getNames()))
-    return
-end
-
--- Wrap all found tanks
-local tanks = {}
-for _, name in ipairs(valveNames) do
-    local t = peripheral.wrap(name)
-    if t then
-        table.insert(tanks, { name = name, peripheral = t })
-        print("Connected: " .. name)
+-- 3. Draw Bar Helper
+local function drawBar(percent)
+    local w, h = mon.getSize()
+    local barWidth = w - 2
+    local filledWidth = math.floor((percent / 100) * barWidth)
+    
+    -- Background (Gray)
+    mon.setCursorPos(2, 8)
+    mon.setBackgroundColor(colors.gray)
+    mon.write(string.rep(" ", barWidth))
+    
+    -- Fill (Red)
+    if filledWidth > 0 then
+        mon.setCursorPos(2, 8)
+        mon.setBackgroundColor(colors.red)
+        mon.write(string.rep(" ", filledWidth))
     end
+    mon.setBackgroundColor(colors.black)
 end
-sleep(1)
 
--- Loop
+-- =============================================
+-- MAIN LOOP
+-- =============================================
 while true do
-    local totalAmount = 0
-    local totalCapacity = 0
-    local commonFluidName = "Empty"
-    local activeTanks = 0
+    local w, h = mon.getSize()
 
-    -- Aggregate data from all tanks
-    for _, tankObj in ipairs(tanks) do
-        local data = getTankData(tankObj.peripheral)
-        
-        totalAmount = totalAmount + data.amount
-        totalCapacity = totalCapacity + data.capacity
-        
-        -- Capture the first valid fluid name found
-        if data.name ~= "Unknown" and commonFluidName == "Empty" then
-            commonFluidName = data.name
-        end
-        
-        -- Count as active if it has capacity (is formed)
-        if data.capacity > 0 then
-            activeTanks = activeTanks + 1
+    -- --- PART 1: FLUID LOGIC (MERGED) ---
+    local currentAmount = 0
+    local totalMax = 0
+    local tankCount = 0
+
+    -- A. Process Standard Fluid Storage Tanks
+    local standardTanks = { peripheral.find("fluid_storage") }
+    tankCount = tankCount + #standardTanks
+    totalMax = totalMax + (#standardTanks * CAPACITY_PER_TANK)
+    
+    for i = 1, #standardTanks do
+        -- Check if tanks() method exists and returns data
+        if standardTanks[i].tanks then
+            local tInfo = standardTanks[i].tanks()
+            if tInfo and tInfo[1] and tInfo[1].amount then
+                currentAmount = currentAmount + tInfo[1].amount
+            end
         end
     end
-    
-    clear(output)
-    output.setCursorPos(1, 1)
-    output.write("System Status: " .. activeTanks .. " Tank(s) Active")
-    
-    output.setCursorPos(1, 3)
-    output.write("Fluid: " .. commonFluidName)
-    
-    output.setCursorPos(1, 4)
-    output.write("Total: " .. formatNum(totalAmount) .. " mB")
-    
-    output.setCursorPos(1, 5)
-    output.write("Max:   " .. formatNum(totalCapacity) .. " mB")
 
-    -- Progress Bar
-    local w, h = output.getSize()
-    if totalCapacity > 0 then
-        local pct = totalAmount / totalCapacity
-        if pct > 1 then pct = 1 end
-        if pct < 0 then pct = 0 end
+    -- B. Process Dynamic Tanks (New Logic)
+    local valveNames = findAllValves()
+    tankCount = tankCount + #valveNames
+    
+    for _, name in ipairs(valveNames) do
+        local valve = peripheral.wrap(name)
+        if valve then
+            local data = getTankData(valve)
+            currentAmount = currentAmount + data.amount
+            totalMax = totalMax + data.capacity
+        end
+    end
+
+    -- --- PART 2: VITALS SCANNING ---
+    local vitalsData = {}
+    local alarmTriggered = false
+    
+    for i, d in ipairs(detectors) do
+        local entities = d.scanEntities(4)
+        local alive = false
         
-        local barLen = w - 4
-        local fillLen = math.floor(pct * barLen)
+        for _, e in pairs(entities) do
+            -- Check for Unemployed villager
+            if e.name == "Unemployed" then
+                alive = true
+                break
+            end
+        end
+
+        if not alive then alarmTriggered = true end
+        table.insert(vitalsData, { id = i, isAlive = alive })
+    end
+
+    -- Handle Redstone Alarm (Back of computer)
+    redstone.setOutput("back", alarmTriggered)
+
+    -- --- PART 3: DRAWING TO MONITOR ---
+    mon.clear()
+    mon.setTextScale(1)
+    
+    -- >> Draw Header & Blood Stats
+    mon.setCursorPos(1, 1)
+    mon.setTextColor(colors.red)
+    mon.write("-- BLOOD MONITORING SYSTEM --")
+    
+    -- Show stats if ANY tank is found (Standard OR Dynamic)
+    if tankCount > 0 then
+        local percent = 0
+        if totalMax > 0 then
+            percent = (currentAmount / totalMax) * 100
+        end
+
+        local L, V = 15, 7 -- Layout spacing
         
-        output.setCursorPos(1, 7)
-        output.write(string.format("Fill:  %.1f%%", pct * 100))
+        mon.setCursorPos(3, 3)
+        mon.write(string.format("%-"..L.."s %"..V.."d", "Sources:", tankCount))
+        mon.setCursorPos(3, 4)
+        mon.write(string.format("%-"..L.."s %"..V.."d B", "Current:", currentAmount / 1000))
+        mon.setCursorPos(3, 5)
+        mon.write(string.format("%-"..L.."s %"..V.."d B", "Max Cap:", totalMax / 1000))
+        mon.setCursorPos(3, 6)
+        mon.write(string.format("%-"..L.."s %"..V..".1f%%", "Fill:", percent))
         
-        output.setCursorPos(2, 8)
-        output.write("[")
-        if output.setTextColor then output.setTextColor(colors.lime) end
-        output.write(string.rep("|", fillLen))
-        if output.setTextColor then output.setTextColor(colors.gray) end
-        output.write(string.rep("-", barLen - fillLen))
-        if output.setTextColor then output.setTextColor(colors.white) end
-        output.write("]")
+        drawBar(percent)
     else
-        output.setCursorPos(1, 7)
-        output.write("Status: Total Capacity 0")
+        mon.setCursorPos(3, 4)
+        mon.setTextColor(colors.red)
+        mon.write("NO TANKS DETECTED")
     end
 
-    sleep(0.5)
+    -- >> Draw Vitals Grid
+    -- Draw a separator line
+    mon.setBackgroundColor(colors.black)
+    mon.setTextColor(colors.yellow)
+    mon.setCursorPos(1, 9) 
+    mon.write(string.rep("-", w))
+    mon.setCursorPos(2, 10)
+    mon.write("POD STATUS:")
+
+    -- Dynamic Grid Logic
+    local currentX = 2
+    local currentY = VITALS_START_Y
+    
+    for _, v in ipairs(vitalsData) do
+        mon.setCursorPos(currentX, currentY)
+        
+        -- Label: "V1:", "V2:", etc.
+        mon.setTextColor(colors.white)
+        mon.write("V" .. v.id .. ":")
+        
+        -- Status: [OK] or [DEAD]
+        if v.isAlive then
+            mon.setTextColor(colors.green)
+            mon.write("[OK]")
+        else
+            mon.setTextColor(colors.red)
+            mon.write("[DEAD]")
+        end
+        
+        -- Move Cursor Logic
+        currentY = currentY + 1
+        
+        -- If we hit the bottom of the monitor, move to new column
+        if currentY > h then
+            currentY = VITALS_START_Y
+            currentX = currentX + COL_WIDTH
+        end
+
+        -- Stop drawing if we run off the right side of the screen
+        if currentX > w then break end
+    end
+
+    sleep(2) -- Refresh every 2 seconds to reduce lag
 end
