@@ -3,14 +3,12 @@
 -- =============================================
 local VITALS_START_Y = 11 
 local COL_WIDTH = 14 
-local DEBUG_MODE = true -- Prints tank list to computer terminal
+local DEBUG_MODE = true -- Look at the computer terminal to see what it finds
 
--- List of peripheral types to treat as tanks
--- "fluid_storage" = Standard CC (Blood Pods)
--- "dynamic_valve" = Mekanism Multiblock Valve
--- "tank"          = Mekanism Multiblock Structure (Generic)
--- "fluid_tank"    = Other Mods
-local TANK_TYPES = { "fluid_storage", "dynamic_valve", "tank", "fluid_tank" }
+-- FILTER: Ignore tanks smaller than this (in mB)
+-- 4000 mB = 4 Buckets. This filters out pipes and machine buffers
+-- Your Blood Pods are 16000 mB, so they will be detected.
+local MIN_CAPACITY = 4000 
 
 -- =============================================
 -- PERIPHERAL SETUP
@@ -54,47 +52,50 @@ end
 while true do
     local w, h = mon.getSize()
 
-    -- --- PART 1: ROBUST TANK DETECTION ---
+    -- --- PART 1: UNIVERSAL TANK DETECTION ---
     local currentAmount = 0
     local totalMax = 0
     local tankCount = 0
     
-    -- We use a table to track unique peripheral names to prevent double-counting
-    -- (e.g., if "tank" and "dynamic_valve" find the same block)
-    local processedTanks = {} 
-
     if DEBUG_MODE then
         term.clear()
         term.setCursorPos(1,1)
-        print("--- DEBUG: DETECTED TANKS ---")
+        print("--- DEBUG: SCANNING PERIPHERALS ---")
     end
 
-    for _, typeName in ipairs(TANK_TYPES) do
-        local foundPeripherals = { peripheral.find(typeName) }
-        
-        for _, tank in ipairs(foundPeripherals) do
-            local pName = peripheral.getName(tank)
+    -- Get list of ALL connected peripherals
+    local allPeripherals = peripheral.getNames()
+
+    for _, pName in ipairs(allPeripherals) do
+        -- Skip known non-tank peripherals to save time/errors
+        local pType = peripheral.getType(pName)
+        if pType ~= "monitor" and pType ~= "modem" and 
+           pType ~= "computer" and pType ~= "environment_detector" and
+           pType ~= "drive" and pType ~= "printer" then
             
-            -- Only process if we haven't seen this specific peripheral name yet
-            if not processedTanks[pName] then
-                processedTanks[pName] = true
-                
-                -- Wrap in pcall to prevent crashes on glitchy blocks
-                local success, tankData = pcall(tank.tanks)
+            -- Wrap the peripheral
+            local p = peripheral.wrap(pName)
+            
+            -- Check if it has a .tanks() method (is it a fluid container?)
+            if p and p.tanks then
+                -- Wrap in pcall to safely read data without crashing if a block is glitchy
+                local success, tankData = pcall(p.tanks)
                 
                 if success and tankData then
+                    -- Some blocks have multiple internal tanks
                     for _, info in pairs(tankData) do
-                        -- FILTER: Ignore tanks with 0 capacity (unformed multiblocks/glitches)
                         local cap = info.capacity or 0
                         local amt = info.amount or 0
                         
-                        if cap > 0 then
+                        -- FILTER: Only count if capacity is > MIN_CAPACITY (4 Buckets)
+                        -- This ignores pipes/machines that cause the "fluctuating cap" bug
+                        if cap >= MIN_CAPACITY then
                             currentAmount = currentAmount + amt
                             totalMax = totalMax + cap
                             tankCount = tankCount + 1
                             
                             if DEBUG_MODE then
-                                print(string.format("[%s]: %d / %d", pName, amt, cap))
+                                print(string.format("Found: %s (%d/%d mB)", pName, amt, cap))
                             end
                         end
                     end
@@ -160,7 +161,7 @@ while true do
         mon.write("NO TANKS DETECTED")
         mon.setCursorPos(3, 5)
         mon.setTextColor(colors.gray)
-        mon.write("Check Modem/Valve")
+        mon.write("See Terminal for Debug")
     end
 
     -- Vitals Grid
