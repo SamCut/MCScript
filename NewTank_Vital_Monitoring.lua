@@ -1,8 +1,8 @@
--- Dynamic Tank Monitor
+-- Dynamic Tank Monitor (Multi-Tank Edition)
 -- STRICT MODE: Uses ONLY getStored() and getTankCapacity()
--- TARGET: VALVES ONLY (Ignores Tank/Casing blocks)
+-- TARGET: ALL CONNECTED "dynamicValve" PERIPHERALS
+-- Aggregates data from multiple tanks into a single total.
 
-local tankName = "dynamic_valve_0" -- Default
 local monitorSide = nil -- Change to "top", "left", etc. if using an external monitor
 
 local function formatNum(n)
@@ -15,15 +15,17 @@ local function clear(out)
     out.setCursorPos(1,1)
 end
 
-local function findPeripheral()
+-- Find ALL valves, not just one
+local function findAllValves()
     local names = peripheral.getNames()
-    -- STRICT SEARCH: Look for "dynamicValve" (case-sensitive) as specified
+    local valves = {}
+    -- STRICT SEARCH: Look for "dynamicValve" (case-sensitive)
     for _, name in ipairs(names) do
         if name:find("dynamicValve") then
-            return name
+            table.insert(valves, name)
         end
     end
-    return nil
+    return valves
 end
 
 -- Main Logic
@@ -41,34 +43,22 @@ local function getTankData(p)
     }
     
     -- 1. Get Stored Data
-    -- User confirmed getStored() returns {name="...", amount=...}
     if p.getStored then
         local ok, res = pcall(p.getStored)
         if ok and type(res) == "table" then
             if res.amount then data.amount = res.amount end
             if res.name then data.name = res.name end
         elseif ok and type(res) == "number" then
-            -- Just in case it returns a plain number
             data.amount = res
-        else
-            -- Debug output if it fails
-            data.debug_stored_err = tostring(res)
         end
-    else
-        data.debug_stored_err = "Method missing"
     end
 
     -- 2. Get Capacity
-    -- User confirmed getTankCapacity() exists and has value
     if p.getTankCapacity then
         local ok, res = pcall(p.getTankCapacity)
         if ok and type(res) == "number" then
             data.capacity = res
-        else
-            data.debug_cap_err = tostring(res)
         end
-    else
-        data.debug_cap_err = "Method missing"
     end
 
     return data
@@ -76,57 +66,69 @@ end
 
 -- Setup
 clear(output)
-print("Initializing Monitor (Strict Valve Mode)...")
-local pName = findPeripheral()
+print("Initializing Monitor (Multi-Tank Mode)...")
 
-if not pName then
-    print("Error: No 'dynamicValve' peripheral found.")
-    print("Check modem is on the VALVE block.")
+local valveNames = findAllValves()
+if #valveNames == 0 then
+    print("Error: No 'dynamicValve' peripherals found.")
+    print("Check modems are on the VALVE blocks.")
     print("Found: " .. textutils.serialize(peripheral.getNames()))
     return
 end
 
-local tank = peripheral.wrap(pName)
-print("Connected to: " .. pName)
+-- Wrap all found tanks
+local tanks = {}
+for _, name in ipairs(valveNames) do
+    local t = peripheral.wrap(name)
+    if t then
+        table.insert(tanks, { name = name, peripheral = t })
+        print("Connected: " .. name)
+    end
+end
 sleep(1)
 
 -- Loop
 while true do
-    local data = getTankData(tank)
+    local totalAmount = 0
+    local totalCapacity = 0
+    local commonFluidName = "Empty"
+    local activeTanks = 0
+
+    -- Aggregate data from all tanks
+    for _, tankObj in ipairs(tanks) do
+        local data = getTankData(tankObj.peripheral)
+        
+        totalAmount = totalAmount + data.amount
+        totalCapacity = totalCapacity + data.capacity
+        
+        -- Capture the first valid fluid name found
+        if data.name ~= "Unknown" and commonFluidName == "Empty" then
+            commonFluidName = data.name
+        end
+        
+        -- Count as active if it has capacity (is formed)
+        if data.capacity > 0 then
+            activeTanks = activeTanks + 1
+        end
+    end
     
     clear(output)
     output.setCursorPos(1, 1)
-    output.write("Tank: " .. pName)
+    output.write("System Status: " .. activeTanks .. " Tank(s) Active")
     
     output.setCursorPos(1, 3)
-    output.write("Fluid: " .. data.name)
+    output.write("Fluid: " .. commonFluidName)
     
     output.setCursorPos(1, 4)
-    output.write("Level: " .. formatNum(data.amount) .. " mB")
+    output.write("Total: " .. formatNum(totalAmount) .. " mB")
     
     output.setCursorPos(1, 5)
-    output.write("Max:   " .. formatNum(data.capacity) .. " mB")
-
-    -- Debug info if methods failed
-    if data.debug_stored_err or data.debug_cap_err then
-        output.setTextColor(colors.red)
-        output.setCursorPos(1, 10)
-        output.write("DEBUG ERRORS:")
-        if data.debug_stored_err then
-            output.setCursorPos(1, 11)
-            output.write("getStored: " .. data.debug_stored_err)
-        end
-        if data.debug_cap_err then
-            output.setCursorPos(1, 12)
-            output.write("getCap: " .. data.debug_cap_err)
-        end
-        output.setTextColor(colors.white)
-    end
+    output.write("Max:   " .. formatNum(totalCapacity) .. " mB")
 
     -- Progress Bar
     local w, h = output.getSize()
-    if data.capacity > 0 then
-        local pct = data.amount / data.capacity
+    if totalCapacity > 0 then
+        local pct = totalAmount / totalCapacity
         if pct > 1 then pct = 1 end
         if pct < 0 then pct = 0 end
         
@@ -144,6 +146,9 @@ while true do
         output.write(string.rep("-", barLen - fillLen))
         if output.setTextColor then output.setTextColor(colors.white) end
         output.write("]")
+    else
+        output.setCursorPos(1, 7)
+        output.write("Status: Total Capacity 0")
     end
 
     sleep(0.5)
