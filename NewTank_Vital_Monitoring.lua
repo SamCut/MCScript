@@ -1,5 +1,5 @@
--- Smart Dynamic Tank Monitor
--- Automatically adapts to the data structure returned by the tank.
+-- Dynamic Tank Monitor
+-- Uses specific valve methods: getStored() and getTankCapacity()
 
 local tankName = "dynamic_valve_0" -- Default, will auto-detect if not found
 local monitorSide = nil -- Change to "top", "left", etc. if using an external monitor
@@ -16,81 +16,67 @@ local function clear(out)
 end
 
 local function findPeripheral()
-    -- specific search for valve or tank
     local names = peripheral.getNames()
     for _, name in ipairs(names) do
         if name:find("valve") or name:find("dynamic") or name:find("tank") then
             return name
         end
     end
-    return nil -- failed
+    return nil
 end
 
 -- Main Logic
 local output = term.current()
 if monitorSide and peripheral.isPresent(monitorSide) then
     output = peripheral.wrap(monitorSide)
-    output.setTextScale(1) -- adjust if needed
+    output.setTextScale(1)
 end
 
 local function getTankData(p)
-    -- Try specific Mekanism/Fluid variations
-    local info = nil
+    local data = { 
+        name = "Fluid", 
+        amount = 0, 
+        capacity = 0 
+    }
     
-    -- Attempt 1: getTankInfo() (Standard)
+    -- 1. Get Stored Amount (Primary Method)
+    if p.getStored then
+        local ok, res = pcall(p.getStored)
+        if ok and type(res) == "number" then
+            data.amount = res
+        end
+    end
+
+    -- 2. Get Capacity (Primary Method)
+    -- Prioritizing getTankCapacity as requested
+    if p.getTankCapacity then
+        local ok, res = pcall(p.getTankCapacity)
+        if ok and type(res) == "number" then
+            data.capacity = res
+        end
+    elseif p.getCapacity then 
+        -- Fallback only if getTankCapacity is missing
+        local ok, res = pcall(p.getCapacity)
+        if ok and type(res) == "number" then
+            data.capacity = res
+        end
+    end
+
+    -- 3. Get Fluid Name (Metadata)
+    -- getStored usually returns just a number, so we peek at getTankInfo
+    -- ONLY to get the name string, without overwriting the numbers.
     if p.getTankInfo then
-        local status, res = pcall(p.getTankInfo)
-        if status and res then info = res end
-    end
-
-    -- Attempt 2: getTankInfo(1) (Indexed access)
-    if not info and p.getTankInfo then
-        local status, res = pcall(p.getTankInfo, 1)
-        if status and res then info = res end
-    end
-    
-    -- Attempt 3: tanks() (Newer Mekanism)
-    if not info and p.tanks then
-        local status, res = pcall(p.tanks)
-        if status and res then info = res end
-    end
-
-    -- Normalize Data
-    -- We want: { name="Water", amount=1000, capacity=2000 }
-    local normalized = { name = "Empty", amount = 0, capacity = 0 }
-
-    if not info then return normalized end
-
-    -- Unwrap if it's a table of tables (standard getTankInfo returns { [1]={...} })
-    local dataNode = info
-    if info[1] and type(info[1]) == "table" then
-        dataNode = info[1]
-    end
-
-    -- Dynamic Key Search (Fixes "calling it wrong" by finding the actual keys)
-    if type(dataNode) == "table" then
-        -- Find Amount
-        if dataNode.amount then normalized.amount = dataNode.amount
-        elseif dataNode.stored then normalized.amount = dataNode.stored
-        elseif dataNode.qty then normalized.amount = dataNode.qty
-        elseif dataNode.level then normalized.amount = dataNode.level
-        end
-
-        -- Find Capacity
-        if dataNode.capacity then normalized.capacity = dataNode.capacity
-        elseif dataNode.limit then normalized.capacity = dataNode.limit
-        elseif dataNode.max then normalized.capacity = dataNode.max
-        end
-
-        -- Find Name
-        if dataNode.name then normalized.name = dataNode.name
-        elseif dataNode.fluid then normalized.name = dataNode.fluid
-        elseif dataNode.rawName then normalized.name = dataNode.rawName
-        elseif dataNode.label then normalized.name = dataNode.label
+        local ok, info = pcall(p.getTankInfo)
+        if ok and type(info) == "table" and info[1] then
+            if info[1].name then 
+                data.name = info[1].name 
+            elseif info[1].rawName then
+                data.name = info[1].rawName
+            end
         end
     end
 
-    return normalized
+    return data
 end
 
 -- Setup
@@ -117,7 +103,7 @@ while true do
     output.write("Tank: " .. pName)
     
     output.setCursorPos(1, 3)
-    output.write("Fluid: " .. (data.name or "Empty"))
+    output.write("Fluid: " .. data.name)
     
     output.setCursorPos(1, 4)
     output.write("Level: " .. formatNum(data.amount) .. " mB")
@@ -129,6 +115,10 @@ while true do
     local w, h = output.getSize()
     if data.capacity > 0 then
         local pct = data.amount / data.capacity
+        -- Clamp percentage to 0-1 range to prevent errors
+        if pct > 1 then pct = 1 end
+        if pct < 0 then pct = 0 end
+        
         local barLen = w - 4
         local fillLen = math.floor(pct * barLen)
         
@@ -145,7 +135,7 @@ while true do
         output.write("]")
     else
         output.setCursorPos(1, 7)
-        output.write("Status: Empty / Offline")
+        output.write("Status: Capacity Unknown")
     end
 
     sleep(0.5)
